@@ -731,15 +731,15 @@ class GameScene extends Phaser.Scene {
     }
 
     if (jump && onGround) {
-      this.player.setVelocityY(-420);
+      this.player.setVelocityY(-520);
       this.jumpHeld = true;
       audioManager.jump();
     }
 
     // Variable jump height — Mario-style: lower gravity while holding jump and rising
     if (this.jumpHeld && this.player.body.velocity.y < 0) {
-      // Reduce gravity while jump held and still going up
-      this.physics.world.gravity.y = 300;
+      // Reduce gravity while jump held and still going up — lighter float for more height
+      this.physics.world.gravity.y = 200;
     } else {
       // Restore normal gravity
       this.physics.world.gravity.y = 800;
