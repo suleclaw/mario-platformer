@@ -993,8 +993,9 @@ const config = {
   },
   scene: [BootScene, MenuScene, GameScene, LevelCompleteScene, GameOverScene, WinScene],
   scale: {
-    mode: Phaser.Scale.FIT,
+    mode: Phaser.Scale.ENVELOP,
     autoCenter: Phaser.Scale.CENTER_BOTH,
+    expandParent: true,
   },
 };
 
