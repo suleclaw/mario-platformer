@@ -436,7 +436,7 @@ class GameScene extends Phaser.Scene {
       const platform = this.add.image(p.x + p.w / 2, p.y + p.h / 2, key);
       this.physics.add.existing(platform, true);
       this.platforms.add(platform);
-      platform.refreshBody();
+      platform.body.refreshBody();
     });
 
     // Flagpole
