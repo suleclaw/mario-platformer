@@ -549,126 +549,132 @@ class GameScene extends Phaser.Scene {
   }
 
   _createDPad() {
-    // ── Mario Glass D-Pad ──
-    // Frosted-glass, semi-transparent buttons with deep earthy greens,
-    // soft glow halos, rounded pill shapes and smooth tween press feedback.
+    // ── Mario Glass D-Pad (cross layout) ──
+    // Frosted-glass buttons with glow halos, smooth press feedback.
+    // Cross: left/right on middle row, up/down on middle column.
+    // Pointermove global handler enables simultaneous hold-combos.
 
-    const size     = 52;          // button width & height
-    const radius   = 14;          // corner radius → heavily rounded rect
-    const hSpacing = 60;          // horizontal step left↔right
-    const vSpacing = 60;          // vertical step up↔down
+    const size     = 52;
+    const radius   = 14;
+    const hSpacing = 60;  // left↔right gap
+    const vSpacing = 58;  // up↔down gap
     const baseX    = 74;
     const baseY    = GAME_HEIGHT - 72;
 
-    // Colour palette
     const COLORS = {
-      up:      { base: 0x2e7d32, pressed: 0x66bb6a, glow: 0x4caf50 },
-      left:    { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
-      down:    { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
-      right:   { base: 0x1b5e20, pressed: 0x66bb6a, glow: 0x4caf50 },
+      up:    { base: 0x2e7d32, pressed: 0x66bb6a, glow: 0x4caf50 },
+      left:  { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
+      down:  { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
+      right: { base: 0x1b5e20, pressed: 0x66bb6a, glow: 0x4caf50 },
     };
 
-    // Button positions  (same diamond as before)
+    // Cross layout: left/right share same Y row, up/down share same X column
     const positions = {
       up:    { x: baseX,            y: baseY - vSpacing },
       left:  { x: baseX - hSpacing, y: baseY            },
-      down:  { x: baseX + hSpacing, y: baseY            },
-      right: { x: baseX,            y: baseY + vSpacing },
+      down:  { x: baseX,            y: baseY + vSpacing },
+      right: { x: baseX + hSpacing, y: baseY            },
     };
 
     const arrows = { up: '▲', left: '◀', down: '▼', right: '▶' };
-    const keys   = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight' };
+    const keyMap = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight' };
+    const ids    = ['up', 'left', 'down', 'right'];
 
-    // ── Helper: draw a multi-layer glow halo with graphics ──
+    // ── Multi-layer glow halo helper ──
     const makeGlow = (gfx, x, y, w, h, r, color, alpha) => {
       for (let i = 3; i >= 1; i--) {
-        const pad = i * 5;
         gfx.fillStyle(color, alpha / i);
-        gfx.fillRoundedRect(x - w / 2 - pad, y - h / 2 - pad, w + pad * 2, h + pad * 2, r + pad);
+        gfx.fillRoundedRect(x - w / 2 - i * 5, y - h / 2 - i * 5, w + i * 10, h + i * 10, r + i * 5);
       }
     };
 
-    // ── Helper: build one button ──
-    const makeButton = (id) => {
-      const { x, y }  = positions[id];
-      const pal        = COLORS[id];
+    // ── Build all four buttons with shared state ──
+    ids.forEach((id) => {
+      const { x, y } = positions[id];
+      const pal      = COLORS[id];
+      const key      = keyMap[id];
 
-      // 1. Glow halo (Graphics layer, behind the button)
+      // Glow halo (depth 199)
       const glowGfx = this.add.graphics().setDepth(199).setScrollFactor(0);
-      const drawGlow = (color, alpha) => {
-        glowGfx.clear();
-        makeGlow(glowGfx, x, y, size, size, radius, color, alpha);
-      };
+      const drawGlow = (color, alpha) => { glowGfx.clear(); makeGlow(glowGfx, x, y, size, size, radius, color, alpha); };
       drawGlow(pal.glow, 0.35);
 
-      // 2. Frosted-glass base — outer dark stroke + inner lighter fill
-      //    Simulated by stacking two rounded rectangles
-      const shadow = this.add.graphics().setDepth(200).setScrollFactor(0);
+      // Frosted-glass base (depth 200)
+      const shadowGfx = this.add.graphics().setDepth(200).setScrollFactor(0);
       const drawShadow = (fillColor, strokeAlpha) => {
-        shadow.clear();
-        // drop shadow offset
-        shadow.fillStyle(0x000000, 0.22);
-        shadow.fillRoundedRect(x - size / 2 + 2, y - size / 2 + 3, size, size, radius);
-        // button face
-        shadow.fillStyle(fillColor, 0.72);
-        shadow.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
-        // bright top-edge highlight (glass sheen)
-        shadow.fillStyle(0xffffff, 0.18);
-        shadow.fillRoundedRect(x - size / 2 + 3, y - size / 2 + 3, size - 6, size / 3, radius * 0.6);
-        // stroke ring
-        shadow.lineStyle(1.5, 0xffffff, strokeAlpha);
-        shadow.strokeRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+        shadowGfx.clear();
+        shadowGfx.fillStyle(0x000000, 0.22);
+        shadowGfx.fillRoundedRect(x - size / 2 + 2, y - size / 2 + 3, size, size, radius);
+        shadowGfx.fillStyle(fillColor, 0.72);
+        shadowGfx.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+        shadowGfx.fillStyle(0xffffff, 0.18);
+        shadowGfx.fillRoundedRect(x - size / 2 + 3, y - size / 2 + 3, size - 6, size / 3, radius * 0.6);
+        shadowGfx.lineStyle(1.5, 0xffffff, strokeAlpha);
+        shadowGfx.strokeRoundedRect(x - size / 2, y - size / 2, size, size, radius);
       };
       drawShadow(pal.base, 0.55);
 
-      // 3. Invisible hit-area rectangle (full interactive region)
+      // Invisible hit-area (depth 201) — stored globally for pointermove access
       const hit = this.add.rectangle(x, y, size, size, 0x000000, 0)
-        .setDepth(201).setScrollFactor(0)
-        .setInteractive({ draggable: false });
+        .setDepth(201).setScrollFactor(0).setInteractive({ draggable: false });
+      this[`_dpad_hit_${id}`] = hit;
+      this[`_dpad_${id}`]     = { press: null, release: null }; // filled below
 
-      // 4. Arrow label
+      // Arrow label (depth 202)
       const lbl = this.add.text(x, y, arrows[id], {
-        fontSize: '20px',
-        color: '#e8f5e9',
-        fontFamily: 'monospace',
-        stroke: '#1b5e20',
-        strokeThickness: 2,
+        fontSize: '20px', color: '#e8f5e9', fontFamily: 'monospace',
+        stroke: '#1b5e20', strokeThickness: 2,
         shadow: { offsetX: 0, offsetY: 1, color: '#000', blur: 2, fill: true },
       }).setOrigin(0.5).setDepth(202).setScrollFactor(0);
 
-      // ── Press / release animations ──
+      // Press animation
       const press = () => {
-        // Redraw button in pressed colour
         drawShadow(pal.pressed, 0.8);
         drawGlow(pal.glow, 0.7);
-        this.tweens.add({
-          targets: [lbl],
-          scaleX: 0.82, scaleY: 0.82,
-          duration: 80,
-          ease: 'Sine.easeOut',
-        });
+        this.tweens.add({ targets: lbl, scaleX: 0.82, scaleY: 0.82, duration: 80, ease: 'Sine.easeOut' });
+        this[key] = true;
       };
 
+      // Release animation
       const release = () => {
         drawShadow(pal.base, 0.55);
         drawGlow(pal.glow, 0.35);
-        this.tweens.add({
-          targets: [lbl],
-          scaleX: 1, scaleY: 1,
-          duration: 130,
-          ease: 'Back.easeOut',
-        });
+        this.tweens.add({ targets: lbl, scaleX: 1, scaleY: 1, duration: 130, ease: 'Back.easeOut' });
+        this[key] = false;
       };
 
-      hit.on('pointerdown',  () => { press();   this[keys[id]] = true;  });
-      hit.on('pointerup',    () => { release(); this[keys[id]] = false; });
-      hit.on('pointerout',   () => { release(); this[keys[id]] = false; });
+      // Store refs for global pointermove
+      this[`_dpad_${id}`] = { press, release, drawShadow, drawGlow };
+
+      // Pointer events on hit area
+      hit.on('pointerdown',  press);
+      hit.on('pointerup',    release);
+      hit.on('pointerout',   release);
+    });
+
+    // ── Global pointermove — enables drag between buttons + hold-combos ──
+    this._dpad_pointermove = (pointer) => {
+      if (!pointer.isDown) return;
+      ids.forEach((id) => {
+        const hit       = this[`_dpad_hit_${id}`];
+        const key       = keyMap[id];
+        const inBounds  = hit.getBounds().contains(pointer.x, pointer.y);
+        const wasActive = this[key];
+        if (inBounds && !wasActive) {
+          this[`_dpad_${id}`].press();
+        } else if (!inBounds && wasActive) {
+          this[`_dpad_${id}`].release();
+        }
+      });
     };
+    this.input.on('pointermove', this._dpad_pointermove);
 
-    // Build all four buttons
-    ['up', 'left', 'down', 'right'].forEach(makeButton);
+    // Clean up on scene shutdown
+    this.events.on('shutdown', () => {
+      this.input.off('pointermove', this._dpad_pointermove);
+    });
 
-    // Initialise state flags (game-logic unchanged)
+    // State flags
     this.dpadUp    = false;
     this.dpadLeft  = false;
     this.dpadDown  = false;
