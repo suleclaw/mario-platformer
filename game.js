@@ -396,6 +396,7 @@ class GameScene extends Phaser.Scene {
     this.isRespawning = false;
     this.isDying = false;
     this.levelComplete = false;
+    this.jumpHeld = false;
   }
 
   create() {
@@ -661,6 +662,7 @@ class GameScene extends Phaser.Scene {
   _onPlayerDeath() {
     if (this.isDying) return;
     this.isDying = true;
+    this.jumpHeld = false;
     audioManager.death();
 
     // Flash + fall animation
@@ -684,6 +686,7 @@ class GameScene extends Phaser.Scene {
 
   _onLevelComplete() {
     this.levelComplete = true;
+    this.jumpHeld = false;
     audioManager.levelComplete();
     this.player.body.setVelocity(0, 0);
     this.player.body.setAllowGravity(false);
@@ -726,8 +729,22 @@ class GameScene extends Phaser.Scene {
     }
 
     if (jump && onGround) {
-      this.player.setVelocityY(-380);
+      this.player.setVelocityY(-420);
+      this.jumpHeld = true;
       audioManager.jump();
+    }
+
+    // Variable jump height — cut gravity while holding jump and still rising
+    if (this.jumpHeld && this.player.body.velocity.y < 0) {
+      this.player.body.setGravityScale(0.4);
+    } else {
+      this.player.body.setGravityScale(1);
+    }
+
+    // Jump cut — release early drops faster
+    if (this.jumpHeld && !jump) {
+      this.jumpHeld = false;
+      this.player.body.setGravityScale(1);
     }
 
     // Prevent going off left edge
