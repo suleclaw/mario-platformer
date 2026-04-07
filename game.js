@@ -663,6 +663,7 @@ class GameScene extends Phaser.Scene {
     if (this.isDying) return;
     this.isDying = true;
     this.jumpHeld = false;
+    this.physics.world.gravity.y = 800;
     audioManager.death();
 
     // Flash + fall animation
@@ -687,6 +688,7 @@ class GameScene extends Phaser.Scene {
   _onLevelComplete() {
     this.levelComplete = true;
     this.jumpHeld = false;
+    this.physics.world.gravity.y = 800;
     audioManager.levelComplete();
     this.player.body.setVelocity(0, 0);
     this.player.body.setAllowGravity(false);
@@ -734,17 +736,19 @@ class GameScene extends Phaser.Scene {
       audioManager.jump();
     }
 
-    // Variable jump height — cut gravity while holding jump and still rising
+    // Variable jump height — Mario-style: lower gravity while holding jump and rising
     if (this.jumpHeld && this.player.body.velocity.y < 0) {
-      this.player.body.setGravityScale(0.4);
+      // Reduce gravity while jump held and still going up
+      this.physics.world.gravity.y = 300;
     } else {
-      this.player.body.setGravityScale(1);
+      // Restore normal gravity
+      this.physics.world.gravity.y = 800;
     }
 
-    // Jump cut — release early drops faster
+    // Jump cut — release early cuts float, falls normally
     if (this.jumpHeld && !jump) {
       this.jumpHeld = false;
-      this.player.body.setGravityScale(1);
+      this.physics.world.gravity.y = 800;
     }
 
     // Prevent going off left edge
