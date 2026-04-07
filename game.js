@@ -549,69 +549,129 @@ class GameScene extends Phaser.Scene {
   }
 
   _createDPad() {
-    const dpad = this.add.container(0, 0).setDepth(200).setScrollFactor(0);
-    const alpha = 0.6;
-    const btnColor = 0xcccccc;
-    const btnPressed = 0x888888;
-    const size = 48;
-    const hSpacing = 56;   // horizontal gap between left/right
-    const vSpacing = 56;  // vertical gap between up/down and the row
-    const baseX = 70;
-    const baseY = GAME_HEIGHT - 65;
+    // ── Mario Glass D-Pad ──
+    // Frosted-glass, semi-transparent buttons with deep earthy greens,
+    // soft glow halos, rounded pill shapes and smooth tween press feedback.
 
-    // ── Diamond layout on the LEFT ──
-    //        [UP]
-    //  [LEFT]   [DOWN]
-    //       [RIGHT]
+    const size     = 52;          // button width & height
+    const radius   = 14;          // corner radius → heavily rounded rect
+    const hSpacing = 60;          // horizontal step left↔right
+    const vSpacing = 60;          // vertical step up↔down
+    const baseX    = 74;
+    const baseY    = GAME_HEIGHT - 72;
 
-    // Up button (top)
-    const btnUp = this.add.rectangle(baseX, baseY - vSpacing, size, size, btnColor)
-      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblU = this.add.text(baseX, baseY - vSpacing, '▲', {
-      fontSize: '18px', color: '#333', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.9);
-
-    // Left button (left of centre)
-    const btnLeft = this.add.rectangle(baseX - hSpacing, baseY, size, size, btnColor)
-      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblL = this.add.text(baseX - hSpacing, baseY, '◀', {
-      fontSize: '18px', color: '#333', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.9);
-
-    // Down button (right of centre)
-    const btnDown = this.add.rectangle(baseX + hSpacing, baseY, size, size, btnColor)
-      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblD = this.add.text(baseX + hSpacing, baseY, '▼', {
-      fontSize: '18px', color: '#333', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.9);
-
-    // Right button (bottom)
-    const btnRight = this.add.rectangle(baseX, baseY + vSpacing, size, size, btnColor)
-      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblR = this.add.text(baseX, baseY + vSpacing, '▶', {
-      fontSize: '18px', color: '#333', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.9);
-
-    dpad.add([btnUp, btnLeft, btnDown, btnRight, lblU, lblL, lblD, lblR]);
-
-    // Touch handlers
-    const press = (btn, lbl) => { btn.setFillStyle(btnPressed); lbl.setScale(0.88); };
-    const release = (btn, lbl) => { btn.setFillStyle(btnColor); lbl.setScale(1); };
-
-    const makeTouch = (btn, lbl, key) => {
-      btn.on('pointerdown', () => { press(btn, lbl); this[key] = true; });
-      btn.on('pointerup', () => { release(btn, lbl); this[key] = false; });
-      btn.on('pointerout', () => { release(btn, lbl); this[key] = false; });
+    // Colour palette
+    const COLORS = {
+      up:      { base: 0x2e7d32, pressed: 0x66bb6a, glow: 0x4caf50 },
+      left:    { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
+      down:    { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
+      right:   { base: 0x1b5e20, pressed: 0x66bb6a, glow: 0x4caf50 },
     };
 
-    makeTouch(btnUp, lblU, 'dpadUp');
-    makeTouch(btnLeft, lblL, 'dpadLeft');
-    makeTouch(btnDown, lblD, 'dpadDown');
-    makeTouch(btnRight, lblR, 'dpadRight');
+    // Button positions  (same diamond as before)
+    const positions = {
+      up:    { x: baseX,            y: baseY - vSpacing },
+      left:  { x: baseX - hSpacing, y: baseY            },
+      down:  { x: baseX + hSpacing, y: baseY            },
+      right: { x: baseX,            y: baseY + vSpacing },
+    };
 
-    this.dpadUp = false;
-    this.dpadLeft = false;
-    this.dpadDown = false;
+    const arrows = { up: '▲', left: '◀', down: '▼', right: '▶' };
+    const keys   = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight' };
+
+    // ── Helper: draw a multi-layer glow halo with graphics ──
+    const makeGlow = (gfx, x, y, w, h, r, color, alpha) => {
+      for (let i = 3; i >= 1; i--) {
+        const pad = i * 5;
+        gfx.fillStyle(color, alpha / i);
+        gfx.fillRoundedRect(x - w / 2 - pad, y - h / 2 - pad, w + pad * 2, h + pad * 2, r + pad);
+      }
+    };
+
+    // ── Helper: build one button ──
+    const makeButton = (id) => {
+      const { x, y }  = positions[id];
+      const pal        = COLORS[id];
+
+      // 1. Glow halo (Graphics layer, behind the button)
+      const glowGfx = this.add.graphics().setDepth(199).setScrollFactor(0);
+      const drawGlow = (color, alpha) => {
+        glowGfx.clear();
+        makeGlow(glowGfx, x, y, size, size, radius, color, alpha);
+      };
+      drawGlow(pal.glow, 0.35);
+
+      // 2. Frosted-glass base — outer dark stroke + inner lighter fill
+      //    Simulated by stacking two rounded rectangles
+      const shadow = this.add.graphics().setDepth(200).setScrollFactor(0);
+      const drawShadow = (fillColor, strokeAlpha) => {
+        shadow.clear();
+        // drop shadow offset
+        shadow.fillStyle(0x000000, 0.22);
+        shadow.fillRoundedRect(x - size / 2 + 2, y - size / 2 + 3, size, size, radius);
+        // button face
+        shadow.fillStyle(fillColor, 0.72);
+        shadow.fillRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+        // bright top-edge highlight (glass sheen)
+        shadow.fillStyle(0xffffff, 0.18);
+        shadow.fillRoundedRect(x - size / 2 + 3, y - size / 2 + 3, size - 6, size / 3, radius * 0.6);
+        // stroke ring
+        shadow.lineStyle(1.5, 0xffffff, strokeAlpha);
+        shadow.strokeRoundedRect(x - size / 2, y - size / 2, size, size, radius);
+      };
+      drawShadow(pal.base, 0.55);
+
+      // 3. Invisible hit-area rectangle (full interactive region)
+      const hit = this.add.rectangle(x, y, size, size, 0x000000, 0)
+        .setDepth(201).setScrollFactor(0)
+        .setInteractive({ draggable: false });
+
+      // 4. Arrow label
+      const lbl = this.add.text(x, y, arrows[id], {
+        fontSize: '20px',
+        color: '#e8f5e9',
+        fontFamily: 'monospace',
+        stroke: '#1b5e20',
+        strokeThickness: 2,
+        shadow: { offsetX: 0, offsetY: 1, color: '#000', blur: 2, fill: true },
+      }).setOrigin(0.5).setDepth(202).setScrollFactor(0);
+
+      // ── Press / release animations ──
+      const press = () => {
+        // Redraw button in pressed colour
+        drawShadow(pal.pressed, 0.8);
+        drawGlow(pal.glow, 0.7);
+        this.tweens.add({
+          targets: [lbl],
+          scaleX: 0.82, scaleY: 0.82,
+          duration: 80,
+          ease: 'Sine.easeOut',
+        });
+      };
+
+      const release = () => {
+        drawShadow(pal.base, 0.55);
+        drawGlow(pal.glow, 0.35);
+        this.tweens.add({
+          targets: [lbl],
+          scaleX: 1, scaleY: 1,
+          duration: 130,
+          ease: 'Back.easeOut',
+        });
+      };
+
+      hit.on('pointerdown',  () => { press();   this[keys[id]] = true;  });
+      hit.on('pointerup',    () => { release(); this[keys[id]] = false; });
+      hit.on('pointerout',   () => { release(); this[keys[id]] = false; });
+    };
+
+    // Build all four buttons
+    ['up', 'left', 'down', 'right'].forEach(makeButton);
+
+    // Initialise state flags (game-logic unchanged)
+    this.dpadUp    = false;
+    this.dpadLeft  = false;
+    this.dpadDown  = false;
     this.dpadRight = false;
   }
 
