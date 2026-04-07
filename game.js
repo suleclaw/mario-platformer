@@ -560,7 +560,7 @@ class GameScene extends Phaser.Scene {
 
     // Left button
     const btnLeft = this.add.rectangle(60, GAME_HEIGHT - 60, size, size, btnColor)
-      .setAlpha(alpha).setStrokeFillStyle(2, 0xffffff).setStrokeFillStyle(0, 0xffffff).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
+      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
     const lblL = this.add.text(60, GAME_HEIGHT - 60, '◀', {
       fontSize: '18px', color: '#fff', fontFamily: 'monospace',
     }).setOrigin(0.5).setAlpha(0.8);
