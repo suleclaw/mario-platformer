@@ -335,7 +335,7 @@ class MenuScene extends Phaser.Scene {
 
     // Draw background
     this.add.graphics()
-      .fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1)
+      .fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1, 1, 1, 1)
       .fillRect(0, 0, width, height);
 
     // Clouds
@@ -434,8 +434,7 @@ class GameScene extends Phaser.Scene {
         drawPlatformTexture(this, key, p.w, p.h, p.y === 256 ? 0x2e7d32 : 0x558b2f);
       }
       const platform = this.add.image(p.x + p.w / 2, p.y + p.h / 2, key);
-      this.physics.add.existing(platform, true);
-      this.platforms.add(platform);
+      this.platforms.add(platform, true);
     });
 
     // Flagpole
@@ -444,12 +443,11 @@ class GameScene extends Phaser.Scene {
       levelData.flagpole.x + 18, levelData.flagpole.y + 65, 12, 130, 0x000000, 0
     );
     this.physics.add.existing(flagCollider, true);
-    this.physics.add.staticGroup().add(flagCollider);
 
     // Coins
     this.coinGroup = this.physics.add.group();
     levelData.coins.forEach(c => {
-      const coin = this.coinGroup.create(c.x, c.y, 'coin').setCircle(7, 4, 4);
+      const coin = this.coinGroup.create(c.x, c.y, 'coin').setCircle(7, 1, 1);
       coin.body.setAllowGravity(false);
       // Float animation
       this.tweens.add({
@@ -473,7 +471,9 @@ class GameScene extends Phaser.Scene {
       this.time.addEvent({
         delay: 100,
         callback: () => {
-          if (!enemy.body) return;
+          if (!enemy || !enemy.active || !enemy.body) return;
+          // Destroy enemies that have fallen off the level
+          if (enemy.y > GAME_HEIGHT + 50) { enemy.destroy(); return; }
           if (enemy.body.position.x <= enemy.patrolMin) enemy.patrolDir = 1;
           if (enemy.body.position.x >= enemy.patrolMax) enemy.patrolDir = -1;
           enemy.setVelocityX(60 * enemy.patrolDir);
@@ -490,7 +490,7 @@ class GameScene extends Phaser.Scene {
     this.player.setCollideWorldBounds(false);
     this.player.body.setSize(24, 36);
     this.player.body.setOffset(4, 2);
-    this.player.setGravityY(600);
+    this.player.body.setGravityY(600);
 
     // Collisions
     this.physics.add.collider(this.player, this.platforms);
@@ -532,20 +532,13 @@ class GameScene extends Phaser.Scene {
     });
     this.coinParticles.setDepth(100);
 
-    // World bounds bottom (fall death)
-    this.physics.world.checkCollision.down = false;
-    this.physics.add.overlap(
-      this.player,
-      this.add.rectangle(0, GAME_HEIGHT + 50, this.levelWidth, 100).setOrigin(0, 0),
-      () => this._onFallDeath()
-    );
+    // Fall death is handled in update() by checking player.y > GAME_HEIGHT + 40
   }
 
   _drawParallaxBg() {
     const g = this.add.graphics();
-    const w = this.levelWidth;
-    g.fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1);
-    g.fillRect(0, 0, w, GAME_HEIGHT);
+    g.fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1, 1, 1, 1);
+    g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
     g.setScrollFactor(0);
     g.setDepth(-100);
   }
@@ -647,7 +640,7 @@ class GameScene extends Phaser.Scene {
     const enemyTop = enemy.body.top;
     const diff = playerBottom - enemyTop;
 
-    if (diff < -4 && player.body.velocity.y > 0) {
+    if (diff > 0 && diff < 20 && player.body.velocity.y > 0) {
       // Stomp from above
       audioManager.stomp();
       this.score += 200;
@@ -694,8 +687,7 @@ class GameScene extends Phaser.Scene {
     audioManager.levelComplete();
     this.player.body.setVelocity(0, 0);
     this.player.body.setAllowGravity(false);
-    this.player.setVelocity(0);
-    this.player.setPosition(this.flagpole.x + 10, this.flagpole.y + 10);
+    this.player.body.reset(this.flagpole.x + 10, this.flagpole.y + 10);
     this.player.setFlipX(false);
 
     this.time.delayedCall(1500, () => {
@@ -765,7 +757,7 @@ class LevelCompleteScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     this.cameras.main.resetFX();
 
-    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0x1a237e, 0x1a237e, 0.85).fillRect(0, 0, width, height);
+    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0x1a237e, 0x1a237e, 0.85, 0.85, 0.85, 0.85).fillRect(0, 0, width, height);
 
     const t1 = this.add.text(width / 2, 100, 'LEVEL COMPLETE!', {
       fontSize: '28px', color: '#ffd700', fontFamily: 'monospace', stroke: '#000', strokeThickness: 5,
@@ -813,7 +805,7 @@ class GameOverScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     audioManager.gameOver();
 
-    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0xb71c1c, 0xb71c1c, 0.9).fillRect(0, 0, width, height);
+    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0xb71c1c, 0xb71c1c, 0.9, 0.9, 0.9, 0.9).fillRect(0, 0, width, height);
 
     this.add.text(width / 2, 100, 'GAME OVER', {
       fontSize: '36px', color: '#e52521', fontFamily: 'monospace', stroke: '#000', strokeThickness: 6,
@@ -849,7 +841,7 @@ class WinScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     audioManager.win();
 
-    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0x1b5e20, 0x1b5e20, 0.9).fillRect(0, 0, width, height);
+    this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0x1b5e20, 0x1b5e20, 0.9, 0.9, 0.9, 0.9).fillRect(0, 0, width, height);
 
     this.add.text(width / 2, 70, 'YOU WIN!', {
       fontSize: '40px', color: '#ffd700', fontFamily: 'monospace', stroke: '#000', strokeThickness: 6,
