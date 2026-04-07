@@ -397,6 +397,10 @@ class GameScene extends Phaser.Scene {
     this.isDying = false;
     this.levelComplete = false;
     this.jumpHeld = false;
+    this.dpadUp = false;
+    this.dpadLeft = false;
+    this.dpadDown = false;
+    this.dpadRight = false;
   }
 
   create() {
@@ -546,37 +550,52 @@ class GameScene extends Phaser.Scene {
 
   _createDPad() {
     const dpad = this.add.container(0, 0).setDepth(200).setScrollFactor(0);
-    const alpha = 0.55;
+    const alpha = 0.6;
     const btnColor = 0xcccccc;
     const btnPressed = 0x888888;
-    const size = 42;
-    const spacing = 46;
+    const size = 48;
+    const hSpacing = 56;   // horizontal gap between left/right
+    const vSpacing = 56;  // vertical gap between up/down and the row
+    const baseX = 70;
+    const baseY = GAME_HEIGHT - 65;
 
-    // Left button
-    const btnLeft = this.add.rectangle(60, GAME_HEIGHT - 60, size, size, btnColor)
+    // ── Diamond layout on the LEFT ──
+    //        [UP]
+    //  [LEFT]   [DOWN]
+    //       [RIGHT]
+
+    // Up button (top)
+    const btnUp = this.add.rectangle(baseX, baseY - vSpacing, size, size, btnColor)
       .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblL = this.add.text(60, GAME_HEIGHT - 60, '◀', {
-      fontSize: '18px', color: '#fff', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.8);
+    const lblU = this.add.text(baseX, baseY - vSpacing, '▲', {
+      fontSize: '18px', color: '#333', fontFamily: 'monospace',
+    }).setOrigin(0.5).setAlpha(0.9);
 
-    // Right button
-    const btnRight = this.add.rectangle(60 + spacing, GAME_HEIGHT - 60, size, size, btnColor)
+    // Left button (left of centre)
+    const btnLeft = this.add.rectangle(baseX - hSpacing, baseY, size, size, btnColor)
       .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblR = this.add.text(60 + spacing, GAME_HEIGHT - 60, '▶', {
-      fontSize: '18px', color: '#fff', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.8);
+    const lblL = this.add.text(baseX - hSpacing, baseY, '◀', {
+      fontSize: '18px', color: '#333', fontFamily: 'monospace',
+    }).setOrigin(0.5).setAlpha(0.9);
 
-    // Jump button
-    const btnJump = this.add.rectangle(GAME_WIDTH - 60, GAME_HEIGHT - 60, size + 8, size + 8, btnColor)
+    // Down button (right of centre)
+    const btnDown = this.add.rectangle(baseX + hSpacing, baseY, size, size, btnColor)
       .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
-    const lblJ = this.add.text(GAME_WIDTH - 60, GAME_HEIGHT - 60, '▲', {
-      fontSize: '20px', color: '#fff', fontFamily: 'monospace',
-    }).setOrigin(0.5).setAlpha(0.8);
+    const lblD = this.add.text(baseX + hSpacing, baseY, '▼', {
+      fontSize: '18px', color: '#333', fontFamily: 'monospace',
+    }).setOrigin(0.5).setAlpha(0.9);
 
-    dpad.add([btnLeft, btnRight, btnJump, lblL, lblR, lblJ]);
+    // Right button (bottom)
+    const btnRight = this.add.rectangle(baseX, baseY + vSpacing, size, size, btnColor)
+      .setAlpha(alpha).setStrokeStyle(2, 0xffffff).setInteractive({ draggable: false });
+    const lblR = this.add.text(baseX, baseY + vSpacing, '▶', {
+      fontSize: '18px', color: '#333', fontFamily: 'monospace',
+    }).setOrigin(0.5).setAlpha(0.9);
+
+    dpad.add([btnUp, btnLeft, btnDown, btnRight, lblU, lblL, lblD, lblR]);
 
     // Touch handlers
-    const press = (btn, lbl) => { btn.setFillStyle(btnPressed); lbl.setScale(0.9); };
+    const press = (btn, lbl) => { btn.setFillStyle(btnPressed); lbl.setScale(0.88); };
     const release = (btn, lbl) => { btn.setFillStyle(btnColor); lbl.setScale(1); };
 
     const makeTouch = (btn, lbl, key) => {
@@ -585,13 +604,15 @@ class GameScene extends Phaser.Scene {
       btn.on('pointerout', () => { release(btn, lbl); this[key] = false; });
     };
 
+    makeTouch(btnUp, lblU, 'dpadUp');
     makeTouch(btnLeft, lblL, 'dpadLeft');
+    makeTouch(btnDown, lblD, 'dpadDown');
     makeTouch(btnRight, lblR, 'dpadRight');
-    makeTouch(btnJump, lblJ, 'dpadJump');
 
+    this.dpadUp = false;
     this.dpadLeft = false;
+    this.dpadDown = false;
     this.dpadRight = false;
-    this.dpadJump = false;
   }
 
   _createHUD() {
@@ -718,7 +739,7 @@ class GameScene extends Phaser.Scene {
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
     const moveLeft = this.cursors.left.isDown || this.wasd.left.isDown || this.dpadLeft;
     const moveRight = this.cursors.right.isDown || this.wasd.right.isDown || this.dpadRight;
-    const jump = this.cursors.up.isDown || this.cursors.space.isDown || this.wasd.up.isDown || this.dpadJump;
+    const jump = this.cursors.up.isDown || this.cursors.space.isDown || this.wasd.up.isDown || this.dpadUp;
 
     if (moveLeft) {
       this.player.setVelocityX(-180);
