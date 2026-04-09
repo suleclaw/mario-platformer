@@ -634,10 +634,8 @@ class MenuScene extends Phaser.Scene {
         const hit = this.add.rectangle(x, y, 60, 80, 0x000000, 0).setDepth(53).setScrollFactor(0).setInteractive();
         hit.on('pointerdown', () => {
           setSelectedCharacter(char.id);
-          this.playerPreview.setTexture(`player_${char.id}`);
-          this.charLabel.setText(char.name);
-          this._closeCharacterPicker();
-          this._openCharacterPicker(); // Re-open with new selection highlighted
+          // Restart the scene to reflect the new selection (create() reads from localStorage)
+          this.scene.restart();
         });
       } else {
         // Locked — greyed sprite + lock icon
