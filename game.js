@@ -95,6 +95,20 @@ class AudioManager {
     const notes = [523, 659, 784, 1047, 1319];
     notes.forEach((n, i) => this._play(n, 0.12, 'square', 0.5, null, i * 0.08));
   }
+
+  giggle() {
+    // 3 staccato high notes
+    this._play(1200, 0.05, 'square', 0.4, null, 0.0);
+    this._play(1400, 0.05, 'square', 0.4, null, 0.08);
+    this._play(1100, 0.05, 'square', 0.4, null, 0.16);
+  }
+
+  curseTrigger() {
+    // Low descending ominous tones
+    this._play(400, 0.2, 'sawtooth', 0.5, 300, 0.0);
+    this._play(300, 0.2, 'sawtooth', 0.5, 200, 0.2);
+    this._play(200, 0.3, 'sawtooth', 0.5, 150, 0.4);
+  }
 }
 
 const audioManager = new AudioManager();
@@ -428,6 +442,46 @@ function drawMushroomTexture(scene, key) {
   g.destroy();
 }
 
+function drawWitchTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Pointy hat (black triangle)
+  g.fillStyle(0x000000);
+  g.fillTriangle(16, 0, 6, 14, 26, 14);
+  // Hat brim
+  g.fillRect(4, 14, 24, 4);
+  // Face (pale skin)
+  g.fillStyle(0xf5c685);
+  g.fillCircle(16, 22, 8);
+  // Glowing green eyes
+  g.fillStyle(0x00ff00);
+  g.fillCircle(13, 20, 2.5);
+  g.fillCircle(19, 20, 2.5);
+  // Eye glow (brighter inner)
+  g.fillStyle(0x88ff88);
+  g.fillCircle(13, 20, 1);
+  g.fillCircle(19, 20, 1);
+  // Nose
+  g.fillStyle(0xe8b88a);
+  g.fillCircle(16, 24, 1.5);
+  // Robe (black rectangle from shoulders down)
+  g.fillStyle(0x000000);
+  g.fillRect(6, 28, 20, 10);
+  // Broom handle detail
+  g.lineStyle(1, 0x8d6e63, 0.8);
+  g.lineBetween(2, 30, 0, 38);
+  g.lineBetween(30, 30, 32, 38);
+  g.generateTexture(key, 32, 38);
+  g.destroy();
+}
+
+function drawWitchSparkleTexture(scene, key, color) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  g.fillStyle(color);
+  g.fillCircle(4, 4, 4);
+  g.generateTexture(key, 8, 8);
+  g.destroy();
+}
+
 // ----------------------------------------------------------------
 // Boot Scene — generate textures
 // ----------------------------------------------------------------
@@ -458,6 +512,8 @@ class BootScene extends Phaser.Scene {
       const colors = [0xffd700, 0xe52521, 0x4caf50, 0x2196f3];
       drawConfettiTexture(this, key, colors[i]);
     });
+    drawWitchTexture(this, 'witch');
+    drawWitchSparkleTexture(this, 'witch_sparkle', 0x00ff66);
     this.scene.start('MenuScene');
   }
 }
@@ -711,6 +767,7 @@ class GameScene extends Phaser.Scene {
     this.dpadRight = false;
     this.isBig = false;
     this.isInvincible = false;
+    this.isCursed = false;
     // Hidden coins from localStorage
     try {
       const saved = localStorage.getItem('mario_hc');
@@ -833,6 +890,25 @@ class GameScene extends Phaser.Scene {
       });
     });
 
+    // Witch enemy — flies toward Mario, cannot be stomped
+    const witchPos = [
+      { x: 450, y: 160 },
+      { x: 650, y: 140 },
+    ];
+    const wp = witchPos[this.levelIndex] || witchPos[0];
+    this.witch = this.physics.add.sprite(wp.x, wp.y, 'witch');
+    this.witch.body.setAllowGravity(false);
+    this.witch.setCollideWorldBounds(true);
+    this.witch.body.setBounce(1);
+    this.witch.setVelocityX(80);
+    this.witch.setVelocityY(40);
+    // Giggle on spawn
+    audioManager.giggle();
+    // Witch giggle chance ticker (checked in update loop)
+    this._witchGiggleTimer = 0;
+    // Store witch for dark world alpha tracking
+    this._darkWorldObjects = { witch: this.witch };
+
     // Super Mushroom — one per level
     const mushData = [
       { x: 352, y: 144 },  // Level 1: on floating platform
@@ -871,6 +947,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.hiddenCoinGroup, this.collectHiddenCoin, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, null, this);
     this.physics.add.overlap(this.player, this.mushroom, this.collectMushroom, null, this);
+    this.physics.add.overlap(this.player, this.witch, this._hitWitch, null, this);
 
     // Flagpole collision
     this.physics.add.overlap(this.player, flagCollider, () => {
@@ -932,6 +1009,39 @@ class GameScene extends Phaser.Scene {
     });
     this.starburstEmitter.setDepth(150);
 
+    // Witch cure sparkle emitter (active in dark world)
+    this.witchSparkleEmitter = this.add.particles(0, 0, 'witch_sparkle', {
+      speed: { min: 20, max: 80 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 1, end: 0 },
+      lifespan: 1200,
+      frequency: 300,
+      emitting: false,
+    });
+    this.witchSparkleEmitter.setDepth(50);
+
+    // Build dark world object registry for _activate/_deactivateDarkWorld
+    this._darkWorldObjects = {
+      sky: this._skyGfx,
+      clouds: this.clouds,
+      hills: this.hills,
+      platforms: this.platforms,
+      coins: this.coinGroup,
+      hiddenCoins: this.hiddenCoinGroup,
+      enemies: this.enemies,
+      witch: this.witch,
+    };
+    // Store original alphas for restore
+    this._origAlphas = {
+      clouds: 0.7,
+      hills: 1.0,
+      platforms: 1.0,
+      coins: 1.0,
+      hiddenCoins: 1.0,
+      enemies: 1.0,
+      witch: 1.0,
+    };
+
     // Store previous Y for landing detection
     this._prevPlayerY = this.player.y;
 
@@ -949,11 +1059,11 @@ class GameScene extends Phaser.Scene {
   }
 
   _drawParallaxBg() {
-    const g = this.add.graphics();
-    g.fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1, 1, 1, 1);
-    g.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
-    g.setScrollFactor(0);
-    g.setDepth(-100);
+    this._skyGfx = this.add.graphics();
+    this._skyGfx.fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1, 1, 1, 1);
+    this._skyGfx.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+    this._skyGfx.setScrollFactor(0);
+    this._skyGfx.setDepth(-100);
   }
 
   _createDPad() {
@@ -1227,6 +1337,13 @@ class GameScene extends Phaser.Scene {
 
   collectMushroom(player, mushroom) {
     if (!mushroom || !mushroom.active) return;
+    // If cursed, mushroom cures the curse instead of growing Mario
+    if (this.isCursed) {
+      this._cureCurse();
+      mushroom.destroy();
+      this.mushroom = null;
+      return;
+    }
     audioManager.powerUp();
     // Starburst particle burst
     this.starburstEmitter.emitParticleAt(mushroom.x, mushroom.y, 16);
@@ -1497,8 +1614,138 @@ class GameScene extends Phaser.Scene {
     this._createHUD();
   }
 
+  _hitWitch(player, witch) {
+    if (this.isDying || this.isRespawning || this.levelComplete) return;
+    if (this.isInvincible) return;
+    if (this.isCursed) return; // already cursed, nothing happens
+    this._triggerCurse();
+  }
+
+  _triggerCurse() {
+    this.isCursed = true;
+    // 1. Screen flash purple
+    this.cameras.main.flash(150, 80, 0, 128);
+    // 2. Play curse sound
+    audioManager.curseTrigger();
+    // 3. Mario becomes the witch sprite
+    this.player.setTexture('witch');
+    // 4. Dark world
+    this._activateDarkWorld();
+    // 5. Brief invincibility so player can escape
+    this.isInvincible = true;
+    this.time.delayedCall(1500, () => { this.isInvincible = false; });
+  }
+
+  _activateDarkWorld() {
+    const objs = this._darkWorldObjects;
+    // Fill sky with solid black
+    if (objs.sky) {
+      objs.sky.clear();
+      objs.sky.fillStyle(0x0a0a1a);
+      objs.sky.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      objs.sky.setAlpha(0.85);
+    }
+    // Dim clouds heavily
+    if (objs.clouds) objs.clouds.getChildren().forEach(c => c.setAlpha(0.1));
+    // Dim hills
+    if (objs.hills) objs.hills.getChildren().forEach(c => c.setAlpha(0.15));
+    // Dim platforms
+    if (objs.platforms) objs.platforms.getChildren().forEach(c => c.setAlpha(0.25));
+    // Dim coins
+    if (objs.coins) objs.coins.getChildren().forEach(c => c.setAlpha(0.2));
+    if (objs.hiddenCoins) objs.hiddenCoins.getChildren().forEach(c => c.setAlpha(0.2));
+    // Dim enemies
+    if (objs.enemies) objs.enemies.getChildren().forEach(c => c.setAlpha(0.2));
+    // Dim witch but keep visible
+    if (objs.witch) objs.witch.setAlpha(0.6);
+    // Player gets faint green glow tint
+    this.player.setTint(0x00ff66);
+    // Start witch sparkle ambient particles around player
+    this.witchSparkleEmitter.setPosition(this.player.x, this.player.y);
+    this.witchSparkleEmitter.start();
+  }
+
+  _deactivateDarkWorld() {
+    const objs = this._darkWorldObjects;
+    // Restore sky
+    if (objs.sky) {
+      objs.sky.clear();
+      objs.sky.fillGradientStyle(0x87ceeb, 0x87ceeb, 0x4fc3f7, 0x4fc3f7, 1, 1, 1, 1);
+      objs.sky.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+      objs.sky.setAlpha(1);
+    }
+    // Restore clouds
+    if (objs.clouds) objs.clouds.getChildren().forEach(c => c.setAlpha(0.7));
+    // Restore hills
+    if (objs.hills) objs.hills.getChildren().forEach(c => c.setAlpha(1));
+    // Restore platforms
+    if (objs.platforms) objs.platforms.getChildren().forEach(c => c.setAlpha(1));
+    // Restore coins
+    if (objs.coins) objs.coins.getChildren().forEach(c => c.setAlpha(1));
+    if (objs.hiddenCoins) objs.hiddenCoins.getChildren().forEach(c => c.setAlpha(1));
+    // Restore enemies
+    if (objs.enemies) objs.enemies.getChildren().forEach(c => c.setAlpha(1));
+    // Restore witch alpha
+    if (objs.witch) objs.witch.setAlpha(1);
+    // Remove player tint
+    this.player.clearTint();
+    // Stop witch sparkle emitter
+    this.witchSparkleEmitter.stop();
+  }
+
+  _respawnMushroom() {
+    const mushData = [
+      { x: 352, y: 144 },
+      { x: 500, y: 128 },
+    ];
+    const mushPos = mushData[this.levelIndex] || mushData[0];
+    this.mushroom = this.physics.add.sprite(mushPos.x, mushPos.y, 'mushroom');
+    this.mushroom.body.setAllowGravity(false);
+    this.mushroom.body.setSize(20, 20);
+    this.mushroom.setScale(0);
+    this.tweens.add({
+      targets: this.mushroom, scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.mushroom, y: this.mushroom.y - 5,
+      duration: 700 + Math.random() * 300, yoyo: true, repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+    this.physics.add.overlap(this.player, this.mushroom, this.collectMushroom, null, this);
+  }
+
+  _cureCurse() {
+    this.isCursed = false;
+    // Restore world
+    this._deactivateDarkWorld();
+    // Mario back to normal sprite
+    this.player.setTexture(`player_${this.selectedChar}`);
+    // Triumphant sound
+    audioManager.powerUp();
+    // Starburst
+    this.starburstEmitter.emitParticleAt(this.player.x, this.player.y, 20);
+    // Screen flash gold briefly
+    this.cameras.main.flash(100, 255, 215, 0);
+    // Respawn the mushroom after a delay
+    this.time.delayedCall(5000, () => {
+      if (this.mushroom === null && !this.isCursed) {
+        this._respawnMushroom();
+      }
+    });
+  }
+
   update() {
     if (this.isDying || this.levelComplete) return;
+
+    // Witch AI — flies toward player at speed 80
+    if (this.witch && this.witch.active) {
+      this.physics.moveToObject(this.witch, this.player, 80);
+      // Random giggle every ~2-3 seconds (checked ~60fps, so ~0.05 probability per frame ≈ every 1.5-2s)
+      if (Math.random() < 0.05) {
+        audioManager.giggle();
+      }
+    }
 
     const onGround = this.player.body.blocked.down || this.player.body.touching.down;
     const moveLeft = this.cursors.left.isDown || this.wasd.left.isDown || this.dpadLeft;
