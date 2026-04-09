@@ -1093,6 +1093,20 @@ class GameScene extends Phaser.Scene {
     this.player.body.setOffset(4, 2);
     this.player.body.setGravityY(600);
 
+    // Visible water sprayer gun on Mario's right hand
+    this.gunGfx = this.add.graphics().setDepth(15).setScrollFactor(1);
+    this._drawGun = (px, py, flip) => {
+      this.gunGfx.clear();
+      const gx = flip ? px - 10 : px + 10;
+      const gy = py - 8;
+      // Nozzle body (blue rectangle)
+      this.gunGfx.fillStyle(0x1565c0, 1);
+      this.gunGfx.fillRoundedRect(gx - 4, gy - 5, 10, 8, 2);
+      // Nozzle tip (lighter blue)
+      this.gunGfx.fillStyle(0x90caf9, 1);
+      this.gunGfx.fillCircle(gx + (flip ? -6 : 5), gy - 1, 3);
+    };
+
     // Collisions
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.enemies, this.platforms);
@@ -1335,6 +1349,8 @@ class GameScene extends Phaser.Scene {
     this._dpad_pointermove = (pointer) => {
       if (!pointer.isDown) return;
       ids.forEach((id) => {
+        // SHOOT uses direct pointerdown/pointerup only — not pointermove tracking
+        if (id === 'shoot') return;
         const hit       = this[`_dpad_hit_${id}`];
         const key       = keyMap[id];
         const inBounds  = hit.getBounds().contains(pointer.x, pointer.y);
@@ -2100,6 +2116,8 @@ class GameScene extends Phaser.Scene {
       this._shootFireball();
     }
 
+    // Draw water sprayer gun on Mario's right hand
+    this._drawGun(this.player.x, this.player.y, this.player.flipX);
     // Water sprayer: dedicated SHOOT button (or F key) shoots water droplets at witch
     const shoot = this.dpadShoot || this.wasd.shootKey.isDown;
     if (shoot && !this._waterCooldown && !this.isDying && !this.levelComplete) {
