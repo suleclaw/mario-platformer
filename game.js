@@ -574,10 +574,14 @@ class MenuScene extends Phaser.Scene {
       }).setOrigin(0.5).setDepth(10);
     }
 
-    // Input
-    this.input.once('pointerdown', () => {
-      audioManager.resume();
-      this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
+    // Input — use pointerup (not pointerdown) so tapping the character picker button
+    // doesn't accidentally start the game before the picker can handle it
+    this.input.once('pointerup', (pointer) => {
+      // Only start if released over the lower half of the screen (below the character picker area)
+      if (pointer.y > 240) {
+        audioManager.resume();
+        this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
+      }
     });
 
     this.input.keyboard.once('keydown-SPACE', () => {
