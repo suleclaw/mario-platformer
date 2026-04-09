@@ -100,6 +100,76 @@ class AudioManager {
 const audioManager = new AudioManager();
 
 // ----------------------------------------------------------------
+// Character Definitions
+// ----------------------------------------------------------------
+const CHARACTERS = [
+  { id: 'red',    name: 'Mario',        color: 0x0d47a1, hat: 0xe52521, unlock: 'default',   unlockDesc: '' },
+  { id: 'blue',   name: 'Blue Mario',   color: 0x1565c0, hat: 0xe52521, unlock: 'coins_10',  unlockDesc: 'Collect 10 coins' },
+  { id: 'green',  name: 'Green Mario',  color: 0x2e7d32, hat: 0xe52521, unlock: 'level1',    unlockDesc: 'Complete Level 1' },
+  { id: 'yellow', name: 'Yellow Mario', color: 0xf9a825, hat: 0xe52521, unlock: 'coins_20',  unlockDesc: 'Collect 20 coins' },
+  { id: 'purple', name: 'Purple Mario', color: 0x6a1b9a, hat: 0xe52521, unlock: 'level2',    unlockDesc: 'Complete Level 2' },
+  { id: 'rainbow',name: 'Rainbow',      color: null,    hat: null,      unlock: 'hidden',    unlockDesc: 'Find all 4 hidden coins' },
+];
+
+function getProgress() {
+  try {
+    return JSON.parse(localStorage.getItem('mario_progress')) || null;
+  } catch { return null; }
+}
+
+function saveProgress(progress) {
+  try { localStorage.setItem('mario_progress', JSON.stringify(progress)); } catch {}
+}
+
+function getSelectedCharacter() {
+  try { return localStorage.getItem('mario_selected') || 'red'; } catch { return 'red'; }
+}
+
+function setSelectedCharacter(id) {
+  try { localStorage.setItem('mario_selected', id); } catch {}
+}
+
+function isUnlocked(char, progress) {
+  switch (char.unlock) {
+    case 'default': return true;
+    case 'coins_10': return (progress?.coinsTotal ?? 0) >= 10;
+    case 'coins_20': return (progress?.coinsTotal ?? 0) >= 20;
+    case 'level1':   return progress?.level1Done ?? false;
+    case 'level2':   return progress?.level2Done ?? false;
+    case 'hidden':   return progress?.hiddenDone ?? false;
+    default:         return false;
+  }
+}
+
+function initProgress() {
+  const p = getProgress() || { coinsTotal: 0, level1Done: false, level2Done: false, hiddenDone: false };
+  saveProgress(p);
+  return p;
+}
+
+function addCoins(amount) {
+  const p = getProgress() || initProgress();
+  p.coinsTotal = (p.coinsTotal || 0) + amount;
+  saveProgress(p);
+  return p;
+}
+
+function markLevelDone(level) {
+  const p = getProgress() || initProgress();
+  if (level === 1) p.level1Done = true;
+  if (level === 2) p.level2Done = true;
+  saveProgress(p);
+  return p;
+}
+
+function markHiddenDone() {
+  const p = getProgress() || initProgress();
+  p.hiddenDone = true;
+  saveProgress(p);
+  return p;
+}
+
+// ----------------------------------------------------------------
 // Level data — platforms, coins, enemies, flagpole
 // ----------------------------------------------------------------
 function makeLevel1() {
@@ -187,12 +257,12 @@ function makeLevel2() {
 const LEVELS = [makeLevel1(), makeLevel2()];
 
 // ----------------------------------------------------------------
-// Helper: draw procedural player sprite
+// Helper: draw procedural player sprite (color overrides for variants)
 // ----------------------------------------------------------------
-function drawPlayerTexture(scene, key) {
+function drawPlayerTexture(scene, key, bodyColor = 0x0d47a1, hatColor = 0xe52521) {
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
-  // Hat (red)
-  g.fillStyle(0xe52521);
+  // Hat
+  g.fillStyle(hatColor);
   g.fillRect(4, 0, 24, 6);
   // Face (skin)
   g.fillStyle(0xf5c685);
@@ -201,11 +271,12 @@ function drawPlayerTexture(scene, key) {
   g.fillStyle(0x000000);
   g.fillRect(8, 8, 4, 4);
   g.fillRect(18, 8, 4, 4);
-  // Body (blue overalls)
-  g.fillStyle(0x0d47a1);
+  // Body (overalls — configurable)
+  g.fillStyle(bodyColor);
   g.fillRect(4, 18, 24, 14);
-  // Overall straps
-  g.fillStyle(0x1565c0);
+  // Overall straps (slightly lighter/darker than body)
+  const strapColor = bodyColor === 0x6a1b9a ? 0x7b1fa2 : bodyColor === 0xf9a825 ? 0xfbc02d : bodyColor - 0x111111;
+  g.fillStyle(strapColor);
   g.fillRect(6, 18, 4, 14);
   g.fillRect(22, 18, 4, 14);
   // Buttons
@@ -365,7 +436,16 @@ class BootScene extends Phaser.Scene {
 
   create() {
     audioManager.init();
-    drawPlayerTexture(this, 'player');
+    // Draw all 6 character variants
+    CHARACTERS.forEach(char => {
+      const key = `player_${char.id}`;
+      if (char.color !== null) {
+        drawPlayerTexture(this, key, char.color, char.hat);
+      } else {
+        // Rainbow — draw with default colors (shimmer applied in-game)
+        drawPlayerTexture(this, key, 0x0d47a1, 0xe52521);
+      }
+    });
     drawEnemyTexture(this, 'enemy');
     drawCoinTexture(this, 'coin');
     drawCloudTexture(this, 'cloud');
@@ -389,6 +469,7 @@ class MenuScene extends Phaser.Scene {
   constructor() { super({ key: 'MenuScene' }); }
 
   create() {
+    initProgress();
     const { width, height } = this.cameras.main;
 
     // Draw background
@@ -417,7 +498,7 @@ class MenuScene extends Phaser.Scene {
     starEmitter.setDepth(0);
 
     // Title
-    const title = this.add.text(width / 2, 80, 'MARIO\nPLATFORMER', {
+    const title = this.add.text(width / 2, 70, 'MARIO\nPLATFORMER', {
       fontFamily: 'monospace', fontSize: '42px', color: '#e52521',
       align: 'center', stroke: '#000', strokeThickness: 6,
     }).setOrigin(0.5).setDepth(10);
@@ -435,19 +516,47 @@ class MenuScene extends Phaser.Scene {
       duration: 800, yoyo: true, repeat: -1, ease: 'Sine.easeInOut',
     });
 
+    // Current selected character preview
+    const selected = getSelectedCharacter();
+    this.playerPreview = this.add.image(width / 2, 200, `player_${selected}`).setScale(2).setDepth(10);
+
+    // Character name label
+    const charName = CHARACTERS.find(c => c.id === selected)?.name || 'Mario';
+    this.charLabel = this.add.text(width / 2, 235, charName, {
+      fontSize: '14px', color: '#ffd700', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(10);
+
+    // Choose Character button
+    const btnY = 265;
+    const btn = this.add.graphics().setDepth(10);
+    const btnW = 180, btnH = 32;
+    const drawBtn = (alpha) => {
+      btn.clear();
+      btn.fillStyle(0x1b5e20, alpha);
+      btn.fillRoundedRect(width / 2 - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
+      btn.lineStyle(2, 0x4caf50, alpha);
+      btn.strokeRoundedRect(width / 2 - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
+    };
+    drawBtn(0.8);
+    this.add.text(width / 2, btnY, '★ CHOOSE CHARACTER', {
+      fontSize: '13px', color: '#fff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(11);
+    const btnHit = this.add.rectangle(width / 2, btnY, btnW, btnH, 0x000000, 0).setDepth(12).setInteractive();
+    btnHit.on('pointerdown', () => this._openCharacterPicker());
+    btnHit.on('pointerover', () => drawBtn(1));
+    btnHit.on('pointerout', () => drawBtn(0.8));
+
     // Tap to start
-    const tap = this.add.text(width / 2, 200, 'TAP TO START', {
+    const tap = this.add.text(width / 2, 300, 'TAP TO START', {
       fontFamily: 'monospace', fontSize: '16px', color: '#fff',
       stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5);
+    }).setOrigin(0.5).setDepth(10);
 
     this.tweens.add({
       targets: tap, alpha: 0.3,
       duration: 600, yoyo: true, repeat: -1,
     });
-
-    // Player preview
-    this.add.image(width / 2, 270, 'player').setScale(1.5);
 
     // Hidden coin progress display
     let hTotal = 0;
@@ -459,10 +568,10 @@ class MenuScene extends Phaser.Scene {
       }
     } catch {}
     if (hTotal > 0) {
-      this.add.text(width / 2, 295, `★ ${hTotal}/4 hidden coins`, {
+      this.add.text(width / 2, 310, `★ ${hTotal}/4 hidden coins`, {
         fontSize: '11px', color: '#ff69b4', fontFamily: 'monospace',
         stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5);
+      }).setOrigin(0.5).setDepth(10);
     }
 
     // Input
@@ -475,6 +584,100 @@ class MenuScene extends Phaser.Scene {
       audioManager.resume();
       this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
     });
+  }
+
+  _openCharacterPicker() {
+    const { width, height } = this.cameras.main;
+    const progress = getProgress();
+    const selected = getSelectedCharacter();
+
+    // Dark overlay
+    const overlay = this.add.graphics().setDepth(50).setScrollFactor(0);
+    overlay.fillStyle(0x000000, 0.7);
+    overlay.fillRect(0, 0, GAME_WIDTH, GAME_HEIGHT);
+
+    // Title
+    this.add.text(width / 2, 30, 'CHOOSE CHARACTER', {
+      fontSize: '18px', color: '#ffd700', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(51).setScrollFactor(0);
+
+    // Character row
+    const startX = 40;
+    const spacing = 72;
+    CHARACTERS.forEach((char, i) => {
+      const x = startX + i * spacing;
+      const y = 120;
+      const unlocked = isUnlocked(char, progress);
+
+      // Box background
+      const box = this.add.graphics().setDepth(51).setScrollFactor(0);
+      if (unlocked) {
+        box.fillStyle(char.id === selected ? 0xffd700 : 0x2e7d32, 0.7);
+        box.lineStyle(2, char.id === selected ? 0xffffff : 0x4caf50, char.id === selected ? 1 : 0.7);
+      } else {
+        box.fillStyle(0x424242, 0.6);
+        box.lineStyle(1, 0x757575, 0.5);
+      }
+      box.fillRoundedRect(x - 30, y - 40, 60, 80, 6);
+      box.strokeRoundedRect(x - 30, y - 40, 60, 80, 6);
+
+      if (unlocked) {
+        const sprite = this.add.image(x, y, `player_${char.id}`).setDepth(52).setScrollFactor(0);
+        if (char.id === selected) {
+          // Gold glow ring
+          const glow = this.add.graphics().setDepth(51).setScrollFactor(0);
+          glow.lineStyle(3, 0xffd700, 0.9);
+          glow.strokeRoundedRect(x - 33, y - 43, 66, 86, 8);
+        }
+        // Tap to select
+        const hit = this.add.rectangle(x, y, 60, 80, 0x000000, 0).setDepth(53).setScrollFactor(0).setInteractive();
+        hit.on('pointerdown', () => {
+          setSelectedCharacter(char.id);
+          this.playerPreview.setTexture(`player_${char.id}`);
+          this.charLabel.setText(char.name);
+          this._closeCharacterPicker();
+          this._openCharacterPicker(); // Re-open with new selection highlighted
+        });
+      } else {
+        // Locked — greyed sprite + lock icon
+        const lockedSprite = this.add.image(x, y, `player_${char.id}`).setDepth(52).setScrollFactor(0);
+        lockedSprite.setAlpha(0.3);
+        lockedSprite.setTint(0x888888);
+        this.add.text(x, y - 10, '🔒', { fontSize: '16px' }).setOrigin(0.5).setDepth(53).setScrollFactor(0);
+      }
+
+      // Name label
+      this.add.text(x, y + 45, char.name, {
+        fontSize: '9px', color: unlocked ? '#fff' : '#888',
+        fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(53).setScrollFactor(0);
+
+      // Unlock hint (if locked)
+      if (!unlocked) {
+        this.add.text(x, y + 58, char.unlockDesc, {
+          fontSize: '7px', color: '#aaa', fontFamily: 'monospace',
+        }).setOrigin(0.5).setDepth(53).setScrollFactor(0);
+      }
+    });
+
+    // Back button
+    const backY = 220;
+    const backBtn = this.add.graphics().setDepth(51).setScrollFactor(0);
+    backBtn.fillStyle(0x1b5e20, 0.8);
+    backBtn.fillRoundedRect(width / 2 - 60, backY - 16, 120, 32, 8);
+    backBtn.lineStyle(2, 0x4caf50, 0.8);
+    backBtn.strokeRoundedRect(width / 2 - 60, backY - 16, 120, 32, 8);
+    this.add.text(width / 2, backY, '← BACK', {
+      fontSize: '14px', color: '#fff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(52).setScrollFactor(0);
+    const backHit = this.add.rectangle(width / 2, backY, 120, 32, 0x000000, 0).setDepth(53).setScrollFactor(0).setInteractive();
+    backHit.on('pointerdown', () => this._closeCharacterPicker());
+  }
+
+  _closeCharacterPicker() {
+    // Remove all picker elements by restarting clean — the overlay is cleared on scene events
+    this.scene.restart();
   }
 }
 
@@ -489,6 +692,7 @@ class GameScene extends Phaser.Scene {
     this.lives = data.lives ?? 3;
     this.coins = data.coins ?? 0;
     this.score = data.score ?? 0;
+    this.selectedChar = getSelectedCharacter();
     this.isRespawning = false;
     this.isDying = false;
     this.levelComplete = false;
@@ -645,7 +849,7 @@ class GameScene extends Phaser.Scene {
 
     // Player
     this.player = this.physics.add.sprite(
-      levelData.playerStart.x, levelData.playerStart.y, 'player'
+      levelData.playerStart.x, levelData.playerStart.y, `player_${this.selectedChar}`
     );
     this.player.setCollideWorldBounds(false);
     this.player.body.setSize(24, 36);
@@ -884,7 +1088,7 @@ class GameScene extends Phaser.Scene {
     hud.add(this.add.rectangle(0, 0, GAME_WIDTH, 28, 0x000000).setAlpha(0.6));
 
     // Lives
-    hud.add(this.add.image(12, 14, 'player').setScale(0.7));
+    hud.add(this.add.image(12, 14, `player_${this.selectedChar}`).setScale(0.7));
     hud.add(this.add.text(28, 6, `×${this.lives}`, {
       fontSize: '14px', color: '#fff', fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
     }));
@@ -921,6 +1125,9 @@ class GameScene extends Phaser.Scene {
     coin.destroy();
     this.coins++;
     this.score += 100;
+    // Track total session coins + persist progress
+    const progress = addCoins(1);
+    this._checkCoinUnlocks(progress);
     this._updateHUD();
   }
 
@@ -954,6 +1161,7 @@ class GameScene extends Phaser.Scene {
   }
 
   _triggerRainbowMarioUnlock() {
+    markHiddenDone();
     try { localStorage.setItem('mario_hc_unlocked', 'true'); } catch {}
     audioManager.powerUp();
     // Big starburst
@@ -1246,6 +1454,35 @@ class GameScene extends Phaser.Scene {
     });
   }
 
+  _checkCoinUnlocks(progress) {
+    const blueUnlocked = isUnlocked(CHARACTERS[1], progress);
+    const yellowUnlocked = isUnlocked(CHARACTERS[3], progress);
+    const prevBlue = isUnlocked(CHARACTERS[1], { ...progress, coinsTotal: progress.coinsTotal - 1 });
+    const prevYellow = isUnlocked(CHARACTERS[3], { ...progress, coinsTotal: progress.coinsTotal - 1 });
+    if (!prevBlue && blueUnlocked) {
+      this._showUnlockPopup('Blue Mario');
+    } else if (!prevYellow && yellowUnlocked) {
+      this._showUnlockPopup('Yellow Mario');
+    }
+  }
+
+  _showUnlockPopup(charName) {
+    audioManager.powerUp();
+    const { width, height } = this.cameras.main;
+    const pop = this.add.text(width / 2, height / 2 - 20, 'NEW!', {
+      fontSize: '28px', color: '#ffd700', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 5,
+    }).setOrigin(0.5).setDepth(400).setScrollFactor(0);
+    this.add.text(width / 2, height / 2 + 15, charName, {
+      fontSize: '18px', color: '#fff', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 3,
+    }).setOrigin(0.5).setDepth(400).setScrollFactor(0);
+    this.tweens.add({
+      targets: pop, scale: 1.2, alpha: 0, delay: 1500, duration: 400, ease: 'Power2',
+      onComplete: () => pop.destroy(),
+    });
+  }
+
   _updateHUD() {
     // Quick update by rebuilding HUD
     this.hud.destroy();
@@ -1325,6 +1562,18 @@ class LevelCompleteScene extends Phaser.Scene {
     const { width, height } = this.cameras.main;
     this.cameras.main.resetFX();
 
+    // Check unlocks: level complete + hidden coins
+    const progress = markLevelDone(this.nextLevel);
+    const prev = { ...progress };
+    if (this.nextLevel === 2) prev.level2Done = false;
+    else prev.level1Done = false;
+    const greenUnlock = !prev.level1Done && isUnlocked(CHARACTERS[2], progress);
+    const purpleUnlock = !prev.level2Done && isUnlocked(CHARACTERS[4], progress);
+    const hiddenUnlock = !isUnlocked(CHARACTERS[5], prev) && isUnlocked(CHARACTERS[5], markHiddenDone());
+    if (greenUnlock) this._unlockedName = 'Green Mario';
+    else if (purpleUnlock) this._unlockedName = 'Purple Mario';
+    else if (hiddenUnlock) this._unlockedName = 'Rainbow';
+
     this.add.graphics().fillGradientStyle(0x000000, 0x000000, 0x1a237e, 0x1a237e, 0.85, 0.85, 0.85, 0.85).fillRect(0, 0, width, height);
 
     // Sparkle stars behind the text
@@ -1360,6 +1609,20 @@ class LevelCompleteScene extends Phaser.Scene {
     }).setOrigin(0.5);
 
     this.tweens.add({ targets: continueText, alpha: 0.3, duration: 500, yoyo: true, repeat: -1 });
+
+    // Show unlock popup if a new character was unlocked
+    if (this._unlockedName) {
+      audioManager.powerUp();
+      const pop = this.add.text(width / 2, 200, 'NEW CHARACTER!', {
+        fontSize: '22px', color: '#ffd700', fontFamily: 'monospace',
+        stroke: '#000', strokeThickness: 4,
+      }).setOrigin(0.5).setDepth(10);
+      this.add.text(width / 2, 228, this._unlockedName, {
+        fontSize: '16px', color: '#fff', fontFamily: 'monospace',
+        stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5).setDepth(10);
+      this.tweens.add({ targets: pop, alpha: 0, delay: 2500, duration: 400, onComplete: () => pop.destroy() });
+    }
 
     this.input.once('pointerdown', () => {
       this.scene.start('GameScene', {
