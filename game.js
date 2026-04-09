@@ -1108,9 +1108,8 @@ class GameScene extends Phaser.Scene {
       if (!this.levelComplete) this._onLevelComplete();
     }, null, this);
 
-    // Water drop group for witch combat
+    // Water drop group for witch combat — overlap registered when witch spawns (_spawnWitch)
     this.waterDropGroup = this.physics.add.group();
-    this.physics.add.overlap(this.waterDropGroup, this.witch, this._waterHitWitch, null, this);
 
     // Controls — keyboard
     this.cursors = this.input.keyboard.createCursorKeys();
