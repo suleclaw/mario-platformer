@@ -125,6 +125,9 @@ function makeLevel1() {
       { x: 360, y: 128 }, { x: 490, y: 160 }, { x: 530, y: 160 },
       { x: 660, y: 112 }, { x: 700, y: 112 }, { x: 820, y: 144 },
       { x: 980, y: 112 }, { x: 1030, y: 112 }, { x: 1130, y: 144 },
+      // Hidden coins
+      { x: 640, y: 80, hidden: true },
+      { x: 960, y: 128, hidden: true },
     ],
     enemies: [
       { x: 350, y: 240, patrolMin: 320, patrolMax: 480 },
@@ -164,6 +167,9 @@ function makeLevel2() {
       { x: 500, y: 112 }, { x: 540, y: 112 }, { x: 640, y: 144 },
       { x: 760, y: 112 }, { x: 900, y: 144 }, { x: 1030, y: 112 },
       { x: 1070, y: 112 }, { x: 1170, y: 144 }, { x: 1320, y: 112 },
+      // Hidden coins
+      { x: 480, y: 80, hidden: true },
+      { x: 880, y: 144, hidden: true },
     ],
     enemies: [
       { x: 160, y: 240, patrolMin: 0, patrolMax: 192 },
@@ -443,6 +449,22 @@ class MenuScene extends Phaser.Scene {
     // Player preview
     this.add.image(width / 2, 270, 'player').setScale(1.5);
 
+    // Hidden coin progress display
+    let hTotal = 0;
+    try {
+      const saved = localStorage.getItem('mario_hc');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        hTotal = (parsed.level1 || 0) + (parsed.level2 || 0);
+      }
+    } catch {}
+    if (hTotal > 0) {
+      this.add.text(width / 2, 295, `★ ${hTotal}/4 hidden coins`, {
+        fontSize: '11px', color: '#ff69b4', fontFamily: 'monospace',
+        stroke: '#000', strokeThickness: 2,
+      }).setOrigin(0.5);
+    }
+
     // Input
     this.input.once('pointerdown', () => {
       audioManager.resume();
@@ -477,6 +499,19 @@ class GameScene extends Phaser.Scene {
     this.dpadRight = false;
     this.isBig = false;
     this.isInvincible = false;
+    // Hidden coins from localStorage
+    try {
+      const saved = localStorage.getItem('mario_hc');
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        this.hiddenCoinsFound = { level1: parsed.level1 || 0, level2: parsed.level2 || 0 };
+      } else {
+        this.hiddenCoinsFound = { level1: 0, level2: 0 };
+      }
+    } catch {
+      this.hiddenCoinsFound = { level1: 0, level2: 0 };
+    }
+    this.totalHiddenFound = this.hiddenCoinsFound[`level${this.levelIndex + 1}`] || 0;
   }
 
   create() {
@@ -527,15 +562,37 @@ class GameScene extends Phaser.Scene {
 
     // Coins
     this.coinGroup = this.physics.add.group();
+    this.hiddenCoinGroup = this.physics.add.group();
     levelData.coins.forEach(c => {
-      const coin = this.coinGroup.create(c.x, c.y, 'coin').setCircle(7, 1, 1);
-      coin.body.setAllowGravity(false);
-      // Float animation
-      this.tweens.add({
-        targets: coin, y: coin.y - 4,
-        duration: 500 + Math.random() * 300, yoyo: true, repeat: -1,
-        ease: 'Sine.easeInOut',
-      });
+      if (c.hidden) {
+        // Hidden coin: separate group, with sparkle hint emitter
+        const coin = this.hiddenCoinGroup.create(c.x, c.y, 'coin').setCircle(7, 1, 1);
+        coin.body.setAllowGravity(false);
+        coin.hiddenFound = false;
+        // Float animation
+        this.tweens.add({
+          targets: coin, y: coin.y - 4,
+          duration: 500 + Math.random() * 300, yoyo: true, repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+        // Faint sparkle hint emitter (always on)
+        this.add.particles(c.x, c.y, 'sparkle', {
+          speed: 10, angle: { min: 0, max: 360 },
+          scale: { start: 0.4, end: 0 },
+          alpha: { start: 0.6, end: 0 },
+          lifespan: 800,
+          frequency: 400, quantity: 1,
+        });
+      } else {
+        // Regular coin
+        const coin = this.coinGroup.create(c.x, c.y, 'coin').setCircle(7, 1, 1);
+        coin.body.setAllowGravity(false);
+        this.tweens.add({
+          targets: coin, y: coin.y - 4,
+          duration: 500 + Math.random() * 300, yoyo: true, repeat: -1,
+          ease: 'Sine.easeInOut',
+        });
+      }
     });
 
     // Enemies
@@ -599,6 +656,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.player, this.platforms);
     this.physics.add.collider(this.enemies, this.platforms);
     this.physics.add.overlap(this.player, this.coinGroup, this.collectCoin, null, this);
+    this.physics.add.overlap(this.player, this.hiddenCoinGroup, this.collectHiddenCoin, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, null, this);
     this.physics.add.overlap(this.player, this.mushroom, this.collectMushroom, null, this);
 
@@ -664,6 +722,16 @@ class GameScene extends Phaser.Scene {
 
     // Store previous Y for landing detection
     this._prevPlayerY = this.player.y;
+
+    // If Rainbow Mario already unlocked, start shimmer immediately
+    try {
+      if (localStorage.getItem('mario_hc_unlocked') === 'true') {
+        this._startRainbowShimmer();
+      }
+    } catch {}
+
+    // Clean up rainbow shimmer on scene shutdown
+    this.events.on('shutdown', () => this._stopRainbowShimmer());
 
     // Fall death is handled in update() by checking player.y > GAME_HEIGHT + 40
   }
@@ -837,6 +905,12 @@ class GameScene extends Phaser.Scene {
       fontSize: '14px', color: '#fff', fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
     }).setOrigin(1, 0));
 
+    // Hidden coin counter "★ X/4" — top right
+    const totalHidden = (this.hiddenCoinsFound?.level1 || 0) + (this.hiddenCoinsFound?.level2 || 0);
+    hud.add(this.add.text(GAME_WIDTH - 8, 36, `★ ${totalHidden}/4`, {
+      fontSize: '12px', color: '#ff69b4', fontFamily: 'monospace', stroke: '#000', strokeThickness: 2,
+    }).setOrigin(1, 0));
+
     this.hud = hud;
   }
 
@@ -848,6 +922,91 @@ class GameScene extends Phaser.Scene {
     this.coins++;
     this.score += 100;
     this._updateHUD();
+  }
+
+  collectHiddenCoin(player, coin) {
+    if (coin.hiddenFound) return;
+    coin.hiddenFound = true;
+    audioManager.coin();
+    this.coinParticles.emitParticleAt(coin.x, coin.y, 12);
+    this._showScorePopup(coin.x, coin.y, '+★', '#ff69b4');
+    coin.destroy();
+    this.score += 200;
+
+    // Track per-level hidden coin count
+    const key = `level${this.levelIndex + 1}`;
+    this.hiddenCoinsFound[key] = (this.hiddenCoinsFound[key] || 0) + 1;
+
+    // Save to localStorage
+    try {
+      localStorage.setItem('mario_hc', JSON.stringify(this.hiddenCoinsFound));
+    } catch {}
+
+    // Check unlock condition
+    const total = this.hiddenCoinsFound.level1 + this.hiddenCoinsFound.level2;
+    if (this.hiddenCoinsFound.level1 === 2 && this.hiddenCoinsFound.level2 === 2) {
+      this._triggerRainbowMarioUnlock();
+    } else if (total > 0) {
+      // Brief celebration for finding a hidden coin
+      this._showScorePopup(player.x, player.y - 30, '★ Found!', '#ff69b4');
+    }
+    this._updateHUD();
+  }
+
+  _triggerRainbowMarioUnlock() {
+    try { localStorage.setItem('mario_hc_unlocked', 'true'); } catch {}
+    audioManager.powerUp();
+    // Big starburst
+    if (this.starburstEmitter) {
+      this.starburstEmitter.emitParticleAt(this.player.x, this.player.y, 24);
+    }
+    // Massive confetti burst
+    const burstKeys = ['confetti_gold','confetti_red','confetti_green','confetti_blue'];
+    burstKeys.forEach(key => {
+      const em = this.add.particles(this.player.x, this.player.y, key, {
+        speed: { min: 80, max: 250 },
+        angle: { min: 0, max: 360 },
+        scale: { start: 1.5, end: 0 },
+        lifespan: 2000,
+        gravityY: 100,
+        quantity: 20,
+        emitting: true,
+      });
+      em.setDepth(200);
+      this.time.delayedCall(2100, () => em.destroy());
+    });
+    // "UNLOCKED!" popup
+    const { width, height } = this.cameras.main;
+    const pop = this.add.text(width / 2, height / 2 - 40, 'UNLOCKED!', {
+      fontSize: '36px', color: '#ff69b4', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 6,
+    }).setOrigin(0.5).setDepth(400).setScrollFactor(0);
+    this.add.text(width / 2, height / 2 + 10, 'Rainbow Mario!', {
+      fontSize: '20px', color: '#ffd700', fontFamily: 'monospace',
+      stroke: '#000', strokeThickness: 4,
+    }).setOrigin(0.5).setDepth(400).setScrollFactor(0);
+    this.tweens.add({ targets: pop, scale: 1.3, alpha: 0, delay: 1800, duration: 500, ease: 'Power2',
+      onComplete: () => pop.destroy() });
+    // Rainbow shimmer tween on player
+    this._startRainbowShimmer();
+  }
+
+  _startRainbowShimmer() {
+    const hues = [0xff0000, 0xff7f00, 0xffff00, 0x00ff00, 0x0000ff, 0x8b00ff];
+    let idx = 0;
+    this._rainbowTimer = this.time.addEvent({
+      delay: 200, callback: () => {
+        if (this.player && this.player.active) {
+          this.player.setTint(hues[idx % hues.length]);
+        }
+        idx++;
+      }, loop: true,
+    });
+  }
+
+  _stopRainbowShimmer() {
+    if (this._rainbowTimer) { this._rainbowTimer.remove(); this._rainbowTimer = null; }
+    if (this.player) this.player.clearTint();
   }
 
   collectMushroom(player, mushroom) {
