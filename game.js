@@ -875,6 +875,7 @@ class GameScene extends Phaser.Scene {
     this.dpadLeft = false;
     this.dpadDown = false;
     this.dpadRight = false;
+    this.dpadShoot = false;
     this.isBig = false;
     this.isInvincible = false;
     this.isCursed = false;
@@ -1118,6 +1119,7 @@ class GameScene extends Phaser.Scene {
       down: Phaser.Input.Keyboard.KeyCodes.S,
       left: Phaser.Input.Keyboard.KeyCodes.A,
       right: Phaser.Input.Keyboard.KeyCodes.D,
+      shootKey: Phaser.Input.Keyboard.KeyCodes.F,
     });
 
     // Touch D-pad
@@ -1241,6 +1243,7 @@ class GameScene extends Phaser.Scene {
       left:  { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
       down:  { base: 0x388e3c, pressed: 0x66bb6a, glow: 0x4caf50 },
       right: { base: 0x1b5e20, pressed: 0x66bb6a, glow: 0x4caf50 },
+      shoot: { base: 0x1565c0, pressed: 0x66bb6a, glow: 0x90caf9 },
     };
 
     // Cross layout: left/right share same Y row, up/down share same X column
@@ -1249,11 +1252,12 @@ class GameScene extends Phaser.Scene {
       left:  { x: baseX - hSpacing, y: baseY            },
       down:  { x: baseX,            y: baseY + vSpacing },
       right: { x: baseX + hSpacing, y: baseY            },
+      shoot: { x: baseX + hSpacing + 22, y: baseY - 15  },
     };
 
-    const arrows = { up: '▲', left: '◀', down: '▼', right: '▶' };
-    const keyMap = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight' };
-    const ids    = ['up', 'left', 'down', 'right'];
+    const arrows = { up: '▲', left: '◀', down: '▼', right: '▶', shoot: '🔫' };
+    const keyMap = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight', shoot: 'dpadShoot' };
+    const ids    = ['up', 'left', 'down', 'right', 'shoot'];
 
     // ── Multi-layer glow halo helper ──
     const makeGlow = (gfx, x, y, w, h, r, color, alpha) => {
@@ -1354,6 +1358,7 @@ class GameScene extends Phaser.Scene {
     this.dpadLeft  = false;
     this.dpadDown  = false;
     this.dpadRight = false;
+    this.dpadShoot = false;
   }
 
   _createHUD() {
@@ -2095,9 +2100,9 @@ class GameScene extends Phaser.Scene {
       this._shootFireball();
     }
 
-    // Water sprayer: DOWN button shoots water droplets at witch
-    const down = this.cursors.down.isDown || this.wasd.down.isDown || this.dpadDown;
-    if (down && !this._waterCooldown && !this.isDying && !this.levelComplete) {
+    // Water sprayer: dedicated SHOOT button (or F key) shoots water droplets at witch
+    const shoot = this.dpadShoot || this.wasd.shootKey.isDown;
+    if (shoot && !this._waterCooldown && !this.isDying && !this.levelComplete) {
       this._shootWaterSpray();
     }
 
