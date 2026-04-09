@@ -527,36 +527,51 @@ class MenuScene extends Phaser.Scene {
       stroke: '#000', strokeThickness: 3,
     }).setOrigin(0.5).setDepth(10);
 
-    // Choose Character button
-    const btnY = 265;
-    const btn = this.add.graphics().setDepth(10);
-    const btnW = 180, btnH = 32;
-    const drawBtn = (alpha) => {
-      btn.clear();
-      btn.fillStyle(0x1b5e20, alpha);
-      btn.fillRoundedRect(width / 2 - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
-      btn.lineStyle(2, 0x4caf50, alpha);
-      btn.strokeRoundedRect(width / 2 - btnW / 2, btnY - btnH / 2, btnW, btnH, 8);
+    // Two side-by-side buttons at the bottom
+    const btnW = 150, btnH = 36, btnY = 278;
+    const btnGap = 20;
+    const totalW = btnW * 2 + btnGap;
+    const btn1X = width / 2 - totalW / 2;          // CHOOSE CHARACTER (left)
+    const btn2X = btn1X + btnW + btnGap;            // START (right)
+
+    // CHOOSE CHARACTER button (left)
+    const btn1Gfx = this.add.graphics().setDepth(10);
+    const drawBtn1 = (alpha) => {
+      btn1Gfx.clear();
+      btn1Gfx.fillStyle(0x1b5e20, alpha);
+      btn1Gfx.fillRoundedRect(btn1X, btnY - btnH / 2, btnW, btnH, 8);
+      btn1Gfx.lineStyle(2, 0x4caf50, alpha);
+      btn1Gfx.strokeRoundedRect(btn1X, btnY - btnH / 2, btnW, btnH, 8);
     };
-    drawBtn(0.8);
-    this.add.text(width / 2, btnY, '★ CHOOSE CHARACTER', {
+    drawBtn1(0.85);
+    this.add.text(btn1X + btnW / 2, btnY, '★ CHARACTER', {
       fontSize: '13px', color: '#fff', fontFamily: 'monospace',
     }).setOrigin(0.5).setDepth(11);
-    const btnHit = this.add.rectangle(width / 2, btnY, btnW, btnH, 0x000000, 0).setDepth(12).setInteractive();
-    btnHit.on('pointerdown', () => this._openCharacterPicker());
-    btnHit.on('pointerover', () => drawBtn(1));
-    btnHit.on('pointerout', () => drawBtn(0.8));
+    const btn1Hit = this.add.rectangle(btn1X + btnW / 2, btnY, btnW, btnH, 0x000000, 0).setDepth(12).setInteractive();
+    btn1Hit.on('pointerdown', () => this._openCharacterPicker());
+    btn1Hit.on('pointerover', () => drawBtn1(1));
+    btn1Hit.on('pointerout', () => drawBtn1(0.85));
 
-    // Tap to start
-    const tap = this.add.text(width / 2, 300, 'TAP TO START', {
-      fontFamily: 'monospace', fontSize: '16px', color: '#fff',
-      stroke: '#000', strokeThickness: 4,
-    }).setOrigin(0.5).setDepth(10);
-
-    this.tweens.add({
-      targets: tap, alpha: 0.3,
-      duration: 600, yoyo: true, repeat: -1,
+    // START button (right)
+    const btn2Gfx = this.add.graphics().setDepth(10);
+    const drawBtn2 = (alpha) => {
+      btn2Gfx.clear();
+      btn2Gfx.fillStyle(0xe52521, alpha);
+      btn2Gfx.fillRoundedRect(btn2X, btnY - btnH / 2, btnW, btnH, 8);
+      btn2Gfx.lineStyle(2, 0xff6659, alpha);
+      btn2Gfx.strokeRoundedRect(btn2X, btnY - btnH / 2, btnW, btnH, 8);
+    };
+    drawBtn2(0.85);
+    this.add.text(btn2X + btnW / 2, btnY, '▶ START', {
+      fontSize: '14px', color: '#fff', fontFamily: 'monospace',
+    }).setOrigin(0.5).setDepth(11);
+    const btn2Hit = this.add.rectangle(btn2X + btnW / 2, btnY, btnW, btnH, 0x000000, 0).setDepth(12).setInteractive();
+    btn2Hit.on('pointerdown', () => {
+      audioManager.resume();
+      this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
     });
+    btn2Hit.on('pointerover', () => drawBtn2(1));
+    btn2Hit.on('pointerout', () => drawBtn2(0.85));
 
     // Hidden coin progress display
     let hTotal = 0;
@@ -571,19 +586,10 @@ class MenuScene extends Phaser.Scene {
       this.add.text(width / 2, 310, `★ ${hTotal}/4 hidden coins`, {
         fontSize: '11px', color: '#ff69b4', fontFamily: 'monospace',
         stroke: '#000', strokeThickness: 2,
-      }).setOrigin(0.5).setDepth(10);
+      }).setOrigin(0.5).setDepth(5);
     }
 
-    // Input — use pointerup (not pointerdown) so tapping the character picker button
-    // doesn't accidentally start the game before the picker can handle it
-    this.input.once('pointerup', (pointer) => {
-      // Only start if released over the lower half of the screen (below the character picker area)
-      if (pointer.y > 240) {
-        audioManager.resume();
-        this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
-      }
-    });
-
+    // Keyboard: SPACE starts the game
     this.input.keyboard.once('keydown-SPACE', () => {
       audioManager.resume();
       this.scene.start('GameScene', { level: 0, lives: 3, coins: 0, score: 0 });
