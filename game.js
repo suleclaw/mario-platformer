@@ -115,6 +115,21 @@ class AudioManager {
     this._play(300, 0.2, 'sawtooth', 0.5, 200, 0.2);
     this._play(200, 0.3, 'sawtooth', 0.5, 150, 0.4);
   }
+
+  waterSpray() {
+    // Squeaky water spray — short high-pitched burst
+    this._play(1800, 0.05, 'sine', 0.3, 1200, 0.0);
+    this._play(1600, 0.05, 'sine', 0.2, 1000, 0.05);
+    this._play(1400, 0.04, 'sine', 0.15, null, 0.1);
+  }
+
+  witchDeath() {
+    // Squeaky descending death giggle
+    this._play(1400, 0.1, 'square', 0.4, 1200, 0.0);
+    this._play(1200, 0.1, 'square', 0.4, 1000, 0.1);
+    this._play(1000, 0.1, 'square', 0.4, 800, 0.2);
+    this._play(600, 0.2, 'square', 0.3, 400, 0.3);
+  }
 }
 
 const audioManager = new AudioManager();
@@ -515,6 +530,21 @@ function drawFireFlowerTexture(scene, key) {
   g.destroy();
 }
 
+function drawWaterDropTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Teardrop/droplet shape
+  // Main body: blue
+  g.fillStyle(0x2196f3);
+  g.fillCircle(4, 5, 4);
+  // Pointed top
+  g.fillTriangle(4, 0, 2, 4, 6, 4);
+  // Highlight: light blue small circle
+  g.fillStyle(0x90caf9);
+  g.fillCircle(3, 4, 1.5);
+  g.generateTexture(key, 8, 10);
+  g.destroy();
+}
+
 function drawFireballTexture(scene, key) {
   const g = scene.make.graphics({ x: 0, y: 0, add: false });
   // Outer orange circle
@@ -592,6 +622,7 @@ class BootScene extends Phaser.Scene {
     drawWitchSparkleTexture(this, 'witch_sparkle', 0x00ff66);
     drawFireFlowerTexture(this, 'fire_flower');
     drawFireballTexture(this, 'fireball');
+    drawWaterDropTexture(this, 'water_drop');
     draw1UpMushroomTexture(this, 'mushroom_1up');
     this.scene.start('MenuScene');
   }
@@ -848,6 +879,7 @@ class GameScene extends Phaser.Scene {
     this.isInvincible = false;
     this.isCursed = false;
     this.hasFire = false;
+    this._waterCooldown = false;
     // Hidden coins from localStorage
     try {
       const saved = localStorage.getItem('mario_hc');
@@ -1075,6 +1107,10 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, flagCollider, () => {
       if (!this.levelComplete) this._onLevelComplete();
     }, null, this);
+
+    // Water drop group for witch combat
+    this.waterDropGroup = this.physics.add.group();
+    this.physics.add.overlap(this.waterDropGroup, this.witch, this._waterHitWitch, null, this);
 
     // Controls — keyboard
     this.cursors = this.input.keyboard.createCursorKeys();
@@ -1539,6 +1575,89 @@ class GameScene extends Phaser.Scene {
     this.time.delayedCall(300, () => { this._fireCooldown = false; });
   }
 
+  _shootWaterSpray() {
+    const dir = this.player.flipX ? -1 : 1;
+    const speed = 300;
+    const count = 3 + Math.floor(Math.random() * 3); // 3-5 droplets
+    for (let i = 0; i < count; i++) {
+      const offsetY = (Math.random() - 0.5) * 10; // slight vertical spread
+      const drop = this.physics.add.sprite(
+        this.player.x + dir * 16,
+        this.player.y + offsetY,
+        'water_drop'
+      );
+      this.waterDropGroup.add(drop);
+      drop.body.setAllowGravity(false);
+      drop.body.setSize(6, 8);
+      const vx = dir * speed * (0.9 + Math.random() * 0.2);
+      const vy = (Math.random() - 0.5) * 40;
+      drop.body.setVelocity(vx, vy);
+      drop.body.checkWorldBounds = true;
+      drop.lifeTimer = this.time.addEvent({
+        delay: 1500,
+        callback: () => { if (drop.active) drop.destroy(); },
+      });
+      drop.events.on('destroy', () => { if (drop.lifeTimer) drop.lifeTimer.remove(); });
+      // Platform collision — destroy on contact
+      this.physics.add.collider(drop, this.platforms, () => { drop.destroy(); });
+    }
+    audioManager.waterSpray();
+    this._waterCooldown = true;
+    this.time.delayedCall(400, () => { this._waterCooldown = false; });
+  }
+
+  _waterHitWitch(drop, witch) {
+    if (!witch || !witch.active) return;
+    drop.destroy();
+    // Blue/white particle burst
+    const burst = this.add.particles(witch.x, witch.y, 'sparkle', {
+      speed: { min: 80, max: 200 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 1.5, end: 0 },
+      lifespan: 600,
+      gravityY: 100,
+      quantity: 16,
+      tint: 0x90caf9,
+    });
+    burst.setDepth(150);
+    this.time.delayedCall(650, () => burst.destroy());
+    this._showScorePopup(witch.x, witch.y - 20, 'SPLASH!', '#2196f3');
+    audioManager.witchDeath();
+    witch.destroy();
+    this.witch = null;
+    // Respawn witch after 3 seconds
+    this.time.delayedCall(3000, () => {
+      if (!this.levelComplete && !this.isDying) {
+        this._spawnWitch();
+      }
+    });
+  }
+
+  _spawnWitch() {
+    const witchPos = [
+      { x: 450, y: 160 },
+      { x: 650, y: 140 },
+    ];
+    const wp = witchPos[this.levelIndex] || witchPos[0];
+    this.witch = this.physics.add.sprite(wp.x, wp.y, 'witch');
+    this.witch.body.setAllowGravity(false);
+    this.witch.setCollideWorldBounds(true);
+    this.witch.body.setBounce(1);
+    this.witch.setVelocityX(80);
+    this.witch.setVelocityY(40);
+    audioManager.giggle();
+    // Pop-in scale animation
+    this.witch.setScale(0);
+    this.tweens.add({
+      targets: this.witch, scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+    // Re-register overlap
+    this.physics.add.overlap(this.waterDropGroup, this.witch, this._waterHitWitch, null, this);
+    this.physics.add.overlap(this.player, this.witch, this._hitWitch, null, this);
+    this._darkWorldObjects.witch = this.witch;
+  }
+
   _growPlayer() {
     this.isBig = true;
     // Scale tween from 1x to 1.5x
@@ -1975,6 +2094,12 @@ class GameScene extends Phaser.Scene {
     const moving = moveLeft || moveRight;
     if (jump && this.hasFire && !this._fireCooldown && moving) {
       this._shootFireball();
+    }
+
+    // Water sprayer: DOWN button shoots water droplets at witch
+    const down = this.cursors.down.isDown || this.wasd.down.isDown || this.dpadDown;
+    if (down && !this._waterCooldown && !this.isDying && !this.levelComplete) {
+      this._shootWaterSpray();
     }
 
     // Prevent going off left edge
