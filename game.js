@@ -89,6 +89,12 @@ class AudioManager {
       t += durations[i] + 0.05;
     });
   }
+
+  powerUp() {
+    // Triumphant ascending arpeggio
+    const notes = [523, 659, 784, 1047, 1319];
+    notes.forEach((n, i) => this._play(n, 0.12, 'square', 0.5, null, i * 0.08));
+  }
 }
 
 const audioManager = new AudioManager();
@@ -322,6 +328,29 @@ function drawConfettiTexture(scene, key, color) {
   g.destroy();
 }
 
+function drawMushroomTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Stem (cream)
+  g.fillStyle(0xf5f5dc);
+  g.fillRect(8, 14, 8, 10);
+  // Cap (red)
+  g.fillStyle(0xe52521);
+  g.fillEllipse(12, 10, 24, 16);
+  // Cap highlight
+  g.fillStyle(0xff6659);
+  g.fillEllipse(10, 7, 8, 6);
+  // White spots
+  g.fillStyle(0xffffff);
+  g.fillCircle(7, 8, 2.5);
+  g.fillCircle(14, 6, 2.5);
+  g.fillCircle(19, 9, 2.5);
+  // Stem outline
+  g.lineStyle(1, 0xd4c85c, 0.6);
+  g.strokeRect(8, 14, 8, 10);
+  g.generateTexture(key, 24, 24);
+  g.destroy();
+}
+
 // ----------------------------------------------------------------
 // Boot Scene — generate textures
 // ----------------------------------------------------------------
@@ -338,6 +367,7 @@ class BootScene extends Phaser.Scene {
     drawFlagTexture(this, 'flag');
     drawParticleTexture(this, 'sparkle');
     drawDustTexture(this, 'dust');
+    drawMushroomTexture(this, 'mushroom');
     ['confetti_gold','confetti_red','confetti_green','confetti_blue'].forEach((key, i) => {
       const colors = [0xffd700, 0xe52521, 0x4caf50, 0x2196f3];
       drawConfettiTexture(this, key, colors[i]);
@@ -445,6 +475,8 @@ class GameScene extends Phaser.Scene {
     this.dpadLeft = false;
     this.dpadDown = false;
     this.dpadRight = false;
+    this.isBig = false;
+    this.isInvincible = false;
   }
 
   create() {
@@ -532,6 +564,28 @@ class GameScene extends Phaser.Scene {
       });
     });
 
+    // Super Mushroom — one per level
+    const mushData = [
+      { x: 352, y: 144 },  // Level 1: on floating platform
+      { x: 500, y: 128 },   // Level 2: early mid-height platform
+    ];
+    const mushPos = mushData[this.levelIndex] || mushData[0];
+    this.mushroom = this.physics.add.sprite(mushPos.x, mushPos.y, 'mushroom');
+    this.mushroom.body.setAllowGravity(false);
+    this.mushroom.body.setSize(20, 20);
+    // Pop-up animation
+    this.mushroom.setScale(0);
+    this.tweens.add({
+      targets: this.mushroom, scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+    // Gentle bob animation
+    this.tweens.add({
+      targets: this.mushroom, y: this.mushroom.y - 5,
+      duration: 700 + Math.random() * 300, yoyo: true, repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
     // Player
     this.player = this.physics.add.sprite(
       levelData.playerStart.x, levelData.playerStart.y, 'player'
@@ -546,6 +600,7 @@ class GameScene extends Phaser.Scene {
     this.physics.add.collider(this.enemies, this.platforms);
     this.physics.add.overlap(this.player, this.coinGroup, this.collectCoin, null, this);
     this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, null, this);
+    this.physics.add.overlap(this.player, this.mushroom, this.collectMushroom, null, this);
 
     // Flagpole collision
     this.physics.add.overlap(this.player, flagCollider, () => {
@@ -594,6 +649,18 @@ class GameScene extends Phaser.Scene {
       emitting: false,
     });
     this.dustEmitter.setDepth(50);
+
+    // Starburst particle emitter for power-up collection
+    this.starburstEmitter = this.add.particles(0, 0, 'sparkle', {
+      speed: { min: 60, max: 180 },
+      angle: { min: 0, max: 360 },
+      scale: { start: 1.2, end: 0 },
+      lifespan: 500,
+      gravityY: 80,
+      quantity: 12,
+      emitting: false,
+    });
+    this.starburstEmitter.setDepth(150);
 
     // Store previous Y for landing detection
     this._prevPlayerY = this.player.y;
@@ -783,6 +850,71 @@ class GameScene extends Phaser.Scene {
     this._updateHUD();
   }
 
+  collectMushroom(player, mushroom) {
+    if (!mushroom || !mushroom.active) return;
+    audioManager.powerUp();
+    // Starburst particle burst
+    this.starburstEmitter.emitParticleAt(mushroom.x, mushroom.y, 16);
+    // Screen flash white 80ms
+    this.cameras.main.flash(80, 255, 255, 255);
+    // Score popup
+    this._showScorePopup(mushroom.x, mushroom.y - 10, '+UP!', '#ff6b6b');
+    // Destroy mushroom
+    mushroom.destroy();
+    this.mushroom = null;
+    // Grow player to big
+    this._growPlayer();
+  }
+
+  _growPlayer() {
+    this.isBig = true;
+    // Scale tween from 1x to 1.5x
+    this.tweens.add({
+      targets: this.player,
+      scaleX: 1.5,
+      scaleY: 1.5,
+      duration: 200,
+      ease: 'Power2.easeOut',
+    });
+    // Adjust hitbox for big state — taller and slightly wider
+    this.player.body.setSize(28, 54);
+    this.player.body.setOffset(2, -16);
+  }
+
+  _shrinkPlayer() {
+    this.isBig = false;
+    this.isInvincible = true;
+    // Scale tween from 1.5x to 1x
+    this.tweens.add({
+      targets: this.player,
+      scaleX: 1,
+      scaleY: 1,
+      duration: 200,
+      ease: 'Power2.easeOut',
+    });
+    // Reset hitbox to small
+    this.player.body.setSize(24, 36);
+    this.player.body.setOffset(4, 2);
+    // Small shrink puff particles
+    this.dustEmitter.emitParticleAt(this.player.x, this.player.y + 16, 6);
+    // Brief invincibility with flash
+    this.player.setAlpha(1);
+    let flashCount = 0;
+    const flashTimer = this.time.addEvent({
+      delay: 60,
+      callback: () => {
+        this.player.setAlpha(this.player.alpha === 1 ? 0.4 : 1);
+        flashCount++;
+        if (flashCount >= 6) {
+          flashTimer.remove();
+          this.player.setAlpha(1);
+          this.isInvincible = false;
+        }
+      },
+      loop: true,
+    });
+  }
+
   _showScorePopup(x, y, text, color = '#ffd700') {
     const popup = this.add.text(x, y, text, {
       fontSize: '16px', color: color, fontFamily: 'monospace',
@@ -812,6 +944,7 @@ class GameScene extends Phaser.Scene {
 
   hitEnemy(player, enemy) {
     if (this.isDying || this.isRespawning || this.levelComplete) return;
+    if (this.isInvincible) return;
 
     const playerBottom = player.body.bottom;
     const enemyTop = enemy.body.top;
@@ -826,8 +959,11 @@ class GameScene extends Phaser.Scene {
       this._updateHUD();
       enemy.destroy();
       player.setVelocityY(-250);
+    } else if (this.isBig) {
+      // Big state: shrink instead of death
+      this._shrinkPlayer();
     } else {
-      // Hit from side or below
+      // Small state: original death behavior
       this._onPlayerDeath();
     }
   }
