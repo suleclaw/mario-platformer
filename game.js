@@ -1271,7 +1271,10 @@ class GameScene extends Phaser.Scene {
 
     const arrows = { up: '▲', left: '◀', down: '▼', right: '▶', shoot: '🔫' };
     const keyMap = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight', shoot: 'dpadShoot' };
-    const ids    = ['up', 'left', 'down', 'right', 'shoot'];
+    // 'shoot' is created in the forEach (visuals) but wired separately — it
+    // bypasses pointermove entirely so rapid-fire pointerdown cannot accumulate
+    // tweens or cause a freeze.
+    const ids    = ['up', 'left', 'down', 'right'];
 
     // ── Multi-layer glow halo helper ──
     const makeGlow = (gfx, x, y, w, h, r, color, alpha) => {
@@ -1345,12 +1348,25 @@ class GameScene extends Phaser.Scene {
       hit.on('pointerout',   release);
     });
 
+    // ── SHOOT button: wire directly to pointerdown/pointerup ─────────────
+    // SHOOT is excluded from the forEach ids[] AND from pointermove so it
+    // cannot accumulate tweens from rapid pointerdown events.  It fires once
+    // per physical press and its state is cleared on pointerup/pointerout.
+    {
+      const shootHit = this._dpad_hit_shoot;
+      const shootBtn = this._dpad_shoot;
+      if (shootHit && shootBtn) {
+        shootHit.removeAllListeners();
+        shootHit.on('pointerdown',  shootBtn.press);
+        shootHit.on('pointerup',    shootBtn.release);
+        shootHit.on('pointerout',   shootBtn.release);
+      }
+    }
+
     // ── Global pointermove — enables drag between buttons + hold-combos ──
     this._dpad_pointermove = (pointer) => {
       if (!pointer.isDown) return;
       ids.forEach((id) => {
-        // SHOOT uses direct pointerdown/pointerup only — not pointermove tracking
-        if (id === 'shoot') return;
         const hit       = this[`_dpad_hit_${id}`];
         const key       = keyMap[id];
         const inBounds  = hit.getBounds().contains(pointer.x, pointer.y);
