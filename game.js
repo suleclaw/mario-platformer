@@ -103,6 +103,12 @@ class AudioManager {
     this._play(1100, 0.05, 'square', 0.4, null, 0.16);
   }
 
+  fireball() {
+    // Whoosh: quick high sweep
+    this._play(800, 0.08, 'square', 0.3, 400, 0);
+    this._play(600, 0.06, 'square', 0.2, 300, 0.06);
+  }
+
   curseTrigger() {
     // Low descending ominous tones
     this._play(400, 0.2, 'sawtooth', 0.5, 300, 0.0);
@@ -482,6 +488,76 @@ function drawWitchSparkleTexture(scene, key, color) {
   g.destroy();
 }
 
+function drawFireFlowerTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Stem: thin green rectangle (center)
+  g.fillStyle(0x2e7d32);
+  g.fillRect(10, 18, 4, 10);
+  // Flower center: orange circle
+  g.fillStyle(0xff6600);
+  g.fillCircle(12, 10, 5);
+  // Petals: 5 red-orange petals around center
+  g.fillStyle(0xe52521);
+  const petalAngles = [0, 72, 144, 216, 288];
+  petalAngles.forEach(deg => {
+    const rad = (deg * Math.PI) / 180;
+    const px = 12 + Math.cos(rad) * 7;
+    const py = 10 + Math.sin(rad) * 7;
+    g.fillEllipse(px, py, 6, 5);
+  });
+  // Flame effect: small yellow/orange on top of petals
+  g.fillStyle(0xffd700);
+  g.fillCircle(12, 5, 3);
+  g.fillStyle(0xff9800);
+  g.fillCircle(9, 7, 2);
+  g.fillCircle(15, 7, 2);
+  g.generateTexture(key, 24, 28);
+  g.destroy();
+}
+
+function drawFireballTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Outer orange circle
+  g.fillStyle(0xff6600);
+  g.fillCircle(5, 5, 5);
+  // Inner yellow core
+  g.fillStyle(0xffd700);
+  g.fillCircle(5, 4, 3);
+  // Flame tip
+  g.fillStyle(0xff3300);
+  g.fillTriangle(5, 0, 3, 4, 7, 4);
+  g.generateTexture(key, 10, 10);
+  g.destroy();
+}
+
+function draw1UpMushroomTexture(scene, key) {
+  const g = scene.make.graphics({ x: 0, y: 0, add: false });
+  // Stem (cream)
+  g.fillStyle(0xf5f5dc);
+  g.fillRect(8, 14, 8, 10);
+  // Cap (green)
+  g.fillStyle(0x43a047);
+  g.fillEllipse(12, 10, 24, 16);
+  // Cap highlight
+  g.fillStyle(0x66bb6a);
+  g.fillEllipse(10, 7, 8, 6);
+  // White spots
+  g.fillStyle(0xffffff);
+  g.fillCircle(7, 8, 2.5);
+  g.fillCircle(14, 6, 2.5);
+  g.fillCircle(19, 9, 2.5);
+  // Heart symbol on cap
+  g.fillStyle(0xe52521);
+  g.fillCircle(12, 9, 1.5);
+  g.fillCircle(14.5, 9, 1.5);
+  g.fillTriangle(10.5, 10, 16, 10, 13.25, 13);
+  // Stem outline
+  g.lineStyle(1, 0xd4c85c, 0.6);
+  g.strokeRect(8, 14, 8, 10);
+  g.generateTexture(key, 24, 24);
+  g.destroy();
+}
+
 // ----------------------------------------------------------------
 // Boot Scene — generate textures
 // ----------------------------------------------------------------
@@ -514,6 +590,9 @@ class BootScene extends Phaser.Scene {
     });
     drawWitchTexture(this, 'witch');
     drawWitchSparkleTexture(this, 'witch_sparkle', 0x00ff66);
+    drawFireFlowerTexture(this, 'fire_flower');
+    drawFireballTexture(this, 'fireball');
+    draw1UpMushroomTexture(this, 'mushroom_1up');
     this.scene.start('MenuScene');
   }
 }
@@ -768,6 +847,7 @@ class GameScene extends Phaser.Scene {
     this.isBig = false;
     this.isInvincible = false;
     this.isCursed = false;
+    this.hasFire = false;
     // Hidden coins from localStorage
     try {
       const saved = localStorage.getItem('mario_hc');
@@ -909,6 +989,46 @@ class GameScene extends Phaser.Scene {
     // Store witch for dark world alpha tracking
     this._darkWorldObjects = { witch: this.witch };
 
+    // Fire Flower — one per level
+    const ffData = [
+      { x: 640, y: 144 },  // Level 1: tall floating platform
+      { x: 1000, y: 144 }, // Level 2
+    ];
+    const ffPos = ffData[this.levelIndex] || ffData[0];
+    this.fireFlowerSprite = this.physics.add.sprite(ffPos.x, ffPos.y, 'fire_flower');
+    this.fireFlowerSprite.body.setAllowGravity(false);
+    this.fireFlowerSprite.body.setSize(20, 24);
+    this.fireFlowerSprite.setScale(0);
+    this.tweens.add({
+      targets: this.fireFlowerSprite, scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this.fireFlowerSprite, y: this.fireFlowerSprite.y - 5,
+      duration: 700 + Math.random() * 300, yoyo: true, repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
+    // 1-Up Mushroom — one per level
+    const u1Data = [
+      { x: 192, y: 176 },  // Level 1: early floating platform
+      { x: 740, y: 128 },  // Level 2: mid-level platform
+    ];
+    const u1Pos = u1Data[this.levelIndex] || u1Data[0];
+    this._1upMushroom = this.physics.add.sprite(u1Pos.x, u1Pos.y, 'mushroom_1up');
+    this._1upMushroom.body.setAllowGravity(false);
+    this._1upMushroom.body.setSize(20, 20);
+    this._1upMushroom.setScale(0);
+    this.tweens.add({
+      targets: this._1upMushroom, scaleX: 1, scaleY: 1,
+      duration: 300, ease: 'Back.easeOut',
+    });
+    this.tweens.add({
+      targets: this._1upMushroom, y: this._1upMushroom.y - 5,
+      duration: 700 + Math.random() * 300, yoyo: true, repeat: -1,
+      ease: 'Sine.easeInOut',
+    });
+
     // Super Mushroom — one per level
     const mushData = [
       { x: 352, y: 144 },  // Level 1: on floating platform
@@ -948,6 +1068,8 @@ class GameScene extends Phaser.Scene {
     this.physics.add.overlap(this.player, this.enemies, this.hitEnemy, null, this);
     this.physics.add.overlap(this.player, this.mushroom, this.collectMushroom, null, this);
     this.physics.add.overlap(this.player, this.witch, this._hitWitch, null, this);
+    this.physics.add.overlap(this.player, this.fireFlowerSprite, this.collectFireFlower, null, this);
+    this.physics.add.overlap(this.player, this._1upMushroom, this.collect1Up, null, this);
 
     // Flagpole collision
     this.physics.add.overlap(this.player, flagCollider, () => {
@@ -1358,6 +1480,65 @@ class GameScene extends Phaser.Scene {
     this._growPlayer();
   }
 
+  collectFireFlower(player, flower) {
+    if (!flower || !flower.active) return;
+    this.hasFire = true;
+    this.player.setTint(0xff6600);
+    this.cameras.main.flash(80, 255, 160, 0);
+    audioManager.powerUp();
+    this.starburstEmitter.emitParticleAt(flower.x, flower.y, 12);
+    this._showScorePopup(flower.x, flower.y - 10, '+FIRE!', '#ff6600');
+    flower.destroy();
+    this.fireFlowerSprite = null;
+  }
+
+  collect1Up(player, mushroom) {
+    if (!mushroom || !mushroom.active) return;
+    audioManager.powerUp();
+    this.starburstEmitter.emitParticleAt(mushroom.x, mushroom.y, 16);
+    this.cameras.main.flash(100, 0, 255, 100); // blue flash
+    this._showScorePopup(mushroom.x, mushroom.y - 10, '1-UP!', '#00ff88');
+    this.lives += 1;
+    this._updateHUD();
+    mushroom.destroy();
+    this._1upMushroom = null;
+  }
+
+  _shootFireball() {
+    if (!this.hasFire || this.isDying || this.levelComplete) return;
+    const dir = this.player.flipX ? -1 : 1;
+    const fb = this.physics.add.sprite(this.player.x + dir * 16, this.player.y, 'fireball');
+    fb.body.setAllowGravity(false);
+    fb.body.setVelocityX(dir * 250);
+    fb.setAngularVelocity(300);
+    fb.body.setSize(8, 8);
+    // Particle trail
+    const trail = this.add.particles(fb.x, fb.y, 'sparkle', {
+      speed: { min: 10, max: 30 }, angle: { min: 0, max: 360 },
+      scale: { start: 0.5, end: 0 }, alpha: { start: 0.8, end: 0 },
+      lifespan: 200, quantity: 1, emitting: false,
+    });
+    trail.expireTimer = this.time.addEvent({
+      delay: 30,
+      callback: () => {
+        if (fb.active) trail.emitParticleAt(fb.x, fb.y, 1);
+        else { trail.destroy(); }
+      },
+      loop: true,
+    });
+    // Destroy on world bounds
+    fb.body.checkWorldBounds = true;
+    fb.events.on('outofbounds', () => { trail.destroy(); fb.destroy(); });
+    // Platform collision — destroy with spark
+    this.physics.add.collider(fb, this.platforms, () => {
+      trail.destroy();
+      fb.destroy();
+    });
+    audioManager.fireball();
+    this._fireCooldown = true;
+    this.time.delayedCall(300, () => { this._fireCooldown = false; });
+  }
+
   _growPlayer() {
     this.isBig = true;
     // Scale tween from 1x to 1.5x
@@ -1375,7 +1556,9 @@ class GameScene extends Phaser.Scene {
 
   _shrinkPlayer() {
     this.isBig = false;
+    this.hasFire = false;
     this.isInvincible = true;
+    this.player.clearTint();
     // Scale tween from 1.5x to 1x
     this.tweens.add({
       targets: this.player,
@@ -1453,6 +1636,9 @@ class GameScene extends Phaser.Scene {
       player.setVelocityY(-250);
     } else if (this.isBig) {
       // Big state: shrink instead of death
+      this._shrinkPlayer();
+    } else if (this.hasFire) {
+      // Has fire but not big: lose fire (shrink handles that)
       this._shrinkPlayer();
     } else {
       // Small state: original death behavior
@@ -1623,6 +1809,8 @@ class GameScene extends Phaser.Scene {
 
   _triggerCurse() {
     this.isCursed = true;
+    this.hasFire = false;
+    this.player.clearTint();
     // 1. Screen flash purple
     this.cameras.main.flash(150, 80, 0, 128);
     // 2. Play curse sound
@@ -1781,6 +1969,12 @@ class GameScene extends Phaser.Scene {
     if (this.jumpHeld && !jump) {
       this.jumpHeld = false;
       this.physics.world.gravity.y = 800;
+    }
+
+    // Fire flower shooting: press JUMP while moving
+    const moving = moveLeft || moveRight;
+    if (jump && this.hasFire && !this._fireCooldown && moving) {
+      this._shootFireball();
     }
 
     // Prevent going off left edge
