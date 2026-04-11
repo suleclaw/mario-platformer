@@ -1271,10 +1271,10 @@ class GameScene extends Phaser.Scene {
 
     const arrows = { up: '▲', left: '◀', down: '▼', right: '▶', shoot: '🔫' };
     const keyMap = { up: 'dpadUp', left: 'dpadLeft', down: 'dpadDown', right: 'dpadRight', shoot: 'dpadShoot' };
-    // 'shoot' is created in the forEach (visuals) but wired separately — it
-    // bypasses pointermove entirely so rapid-fire pointerdown cannot accumulate
-    // tweens or cause a freeze.
-    const ids    = ['up', 'left', 'down', 'right'];
+    // 'shoot' IS in ids[] so the forEach creates its visuals (hit area + press/release).
+    // The separate SHOOT wiring block then wires it directly to pointerdown/pointerup
+    // (bypassing pointermove) so rapid-fire cannot accumulate tweens or freeze.
+    const ids    = ['up', 'left', 'down', 'right', 'shoot'];
 
     // ── Multi-layer glow halo helper ──
     const makeGlow = (gfx, x, y, w, h, r, color, alpha) => {
@@ -1367,6 +1367,8 @@ class GameScene extends Phaser.Scene {
     this._dpad_pointermove = (pointer) => {
       if (!pointer.isDown) return;
       ids.forEach((id) => {
+        // SHOOT uses direct pointerdown/pointerup only — not pointermove
+        if (id === 'shoot') return;
         const hit       = this[`_dpad_hit_${id}`];
         const key       = keyMap[id];
         const inBounds  = hit.getBounds().contains(pointer.x, pointer.y);
